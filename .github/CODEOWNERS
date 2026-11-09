@@ -1,0 +1,10 @@
+# CODEOWNERS for tickets-datak-backend
+#
+# Roles & Team Members:
+# - DevOps & Project Manager:   @AnorakTeam (José Manuel Pérez)
+# - Quality Assurance (QA):     @tohond     (Omar Palencia)
+# - Technical Lead & Backend:   @dannieltom (Juan Torres)
+# - Backend Developer:          @sansviex   (Giovanny Muñoz)
+#
+# Global review rule for all backend code:
+* @AnorakTeam @tohond @dannieltom @sansviex
