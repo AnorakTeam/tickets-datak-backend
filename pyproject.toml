@@ -1,0 +1,28 @@
+[project]
+name = "tickets-datak-backend"
+version = "0.1.0"
+description = "Backend REST API for Support Ticket Management MVP (Django 6 + DRF)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "asgiref>=3.8.1",
+    "django>=5.1.0",
+    "django-cors-headers>=4.4.0",
+    "djangorestframework>=3.15.0",
+    "djangorestframework-simplejwt>=5.3.0",
+    "psycopg[binary]>=3.2.0",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
