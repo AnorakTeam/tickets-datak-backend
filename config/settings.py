@@ -127,6 +127,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Modelo de usuario personalizado (BE-03): Django usa `companies.Usuario` en lugar
+# de su `auth.User` por defecto. Se inicia sesión con correo, no con username.
+AUTH_USER_MODEL = "companies.Usuario"
+
 # Django REST Framework configuration
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -154,6 +158,9 @@ SIMPLE_JWT = {
     "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
+    # Serializer propio del login (BE-03): agrega `rol` y `empresa_id` dentro del
+    # token y devuelve los datos del usuario junto con los tokens.
+    "TOKEN_OBTAIN_SERIALIZER": "apps.companies.serializers.LoginTokenObtainPairSerializer",
 }
 
 # CORS configuration for Nuxt 4 frontend
