@@ -1,6 +1,7 @@
 """Django settings for tickets-datak-backend project."""
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -75,8 +76,14 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-# Database configuration (PostgreSQL 16 by default, SQLite fallback if specified)
-USE_SQLITE = os.getenv("USE_SQLITE", "False").lower() in ("true", "1", "t", "yes")
+# Database configuration (PostgreSQL 16 by default, SQLite fallback for testing/local)
+IS_TESTING = (
+    "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv) or "test" in sys.argv
+)
+if IS_TESTING:
+    USE_SQLITE = True
+else:
+    USE_SQLITE = os.getenv("USE_SQLITE", "False").lower() in ("true", "1", "t", "yes")
 
 if USE_SQLITE:
     DATABASES = {

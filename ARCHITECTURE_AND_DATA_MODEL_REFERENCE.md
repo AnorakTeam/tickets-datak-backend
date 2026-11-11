@@ -215,6 +215,7 @@ Append-only chronological history.
           raise PermissionDenied("TicketItem records are strictly immutable and cannot be modified.")
       super().save(*args, **kwargs)
 
+
   def delete(self, *args, **kwargs):
       raise PermissionDenied("TicketItem records are strictly immutable and cannot be deleted.")
   ```
