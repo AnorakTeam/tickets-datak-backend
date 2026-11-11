@@ -104,6 +104,9 @@ else:
         }
     }
 
+# Custom User Model
+AUTH_USER_MODEL = "companies.Usuario"
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
