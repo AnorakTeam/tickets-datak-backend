@@ -7,6 +7,9 @@ Esta app contiene:
 - `Usuario`: el modelo de usuario personalizado del proyecto (tarea BE-03). Se
   inicia sesión con el correo y cada usuario tiene un rol y, si es cliente, una
   empresa.
+- `ModuloContratado`: el catálogo de módulos funcionales habilitados para cada
+  empresa cliente (tarea BE-04, p. ej. INVENTARIO, NOMINA, VENTAS, FACTURACION,
+  CONTABILIDAD).
 """
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -250,3 +253,50 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     def __str__(self) -> str:
         """Texto con el que se muestra el usuario. Ejemplo: "Carlos Gómez <carlos@acme.com>"."""
         return f"{self.nombre} <{self.correo}>"
+
+
+class ModuloContratado(models.Model):
+    """Módulo funcional contratado y habilitado para una empresa cliente (tarea BE-04).
+
+    Representa cada módulo del producto Datak.co que una empresa tiene activo
+    (por ejemplo: INVENTARIO, NOMINA, VENTAS, FACTURACION, CONTABILIDAD).
+    Al reportar un ticket (RF1, RF2, RF3), el cliente solo puede elegir entre
+    los módulos contratados y activos de su propia empresa.
+
+    Los campos siguen la sección 3.3 de ARCHITECTURE_AND_DATA_MODEL_REFERENCE.md.
+    No se declara `id`: Django crea automáticamente un `BigAutoField` porque
+    así está configurado `DEFAULT_AUTO_FIELD` en `config/settings.py`.
+    """
+
+    # Empresa propietaria del módulo contratado.
+    # - on_delete=CASCADE: si se elimina la empresa, se eliminan sus módulos.
+    # - related_name="modulos_contratados": permite consultar `empresa.modulos_contratados.all()`.
+    empresa = models.ForeignKey(
+        Empresa,
+        verbose_name="empresa",
+        on_delete=models.CASCADE,
+        related_name="modulos_contratados",
+    )
+
+    # Identificador corto del módulo (p. ej. "FACTURACION", "INVENTARIO", "NOMINA").
+    codigo = models.CharField("código", max_length=50)
+
+    # Nombre legible para mostrar en el selector del portal y chatbot
+    # (p. ej. "Facturación Electrónica", "Control de Inventarios").
+    nombre = models.CharField("nombre", max_length=100)
+
+    # Permite deshabilitar un módulo contratado sin perder el historial de tickets
+    # asociados a él.
+    activo = models.BooleanField("activo", default=True)
+
+    class Meta:
+        verbose_name = "módulo contratado"
+        verbose_name_plural = "módulos contratados"
+        ordering = ["nombre"]
+        # Una misma empresa no puede tener dos veces el mismo código de módulo,
+        # pero dos empresas distintas sí pueden contratar el mismo código.
+        unique_together = ("empresa", "codigo")
+
+    def __str__(self) -> str:
+        """Texto con el que se muestra el módulo. Ejemplo: "Facturación Electrónica (FACTURACION)"."""
+        return f"{self.nombre} ({self.codigo})"

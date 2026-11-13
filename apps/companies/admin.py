@@ -9,7 +9,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import BaseUserCreationForm, UserChangeForm
 
-from apps.companies.models import Empresa, Usuario
+from apps.companies.models import Empresa, ModuloContratado, Usuario
 
 
 # El decorador registra el modelo Empresa en el admin usando esta configuración.
@@ -87,3 +87,12 @@ class UsuarioAdmin(UserAdmin):
 
     # Lista de grupos y permisos con buscador en dos columnas.
     filter_horizontal = ("groups", "user_permissions")
+
+
+@admin.register(ModuloContratado)
+class ModuloContratadoAdmin(admin.ModelAdmin):
+    """Admin para gestionar los módulos contratados por cada empresa."""
+
+    list_display = ("nombre", "codigo", "empresa", "activo")
+    list_filter = ("activo", "empresa")
+    search_fields = ("nombre", "codigo", "empresa__nombre")
