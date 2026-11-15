@@ -6,7 +6,7 @@ frontend, y define exactamente qué campos se exponen.
 
 from rest_framework import serializers
 
-from apps.tickets.models import Ticket, TicketItem
+from apps.tickets.models import PrioridadChoices, Ticket, TicketItem
 
 
 class ClientTicketListSerializer(serializers.ModelSerializer):
@@ -88,3 +88,77 @@ class ClientTicketDetailSerializer(serializers.ModelSerializer):
             "historial",
         ]
         read_only_fields = fields
+
+
+class ClientTicketCreateSerializer(serializers.Serializer):
+    """Serializer de entrada para reportar un ticket desde el portal (`POST /api/v1/client/tickets/`, BE-11, RF1).
+
+    Valida los campos enviados por el formulario del cliente. La `empresa`,
+    `creado_por` y `canal_origen='Portal'` nunca se aceptan del payload: los
+    inyecta la vista a partir del usuario autenticado (RNF2).
+    """
+
+    modulo_id = serializers.IntegerField(required=True)
+    pestana_o_documento = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        max_length=255,
+    )
+    asunto = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        max_length=255,
+    )
+    descripcion = serializers.CharField(
+        required=True,
+        allow_blank=False,
+    )
+    mensaje_error = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default="",
+    )
+    prioridad = serializers.ChoiceField(
+        choices=PrioridadChoices.choices,
+        required=True,
+    )
+
+    def validate_mensaje_error(self, value):
+        return value or ""
+
+
+class ClientTicketCreatedResponseSerializer(serializers.ModelSerializer):
+    """Serializer de salida (`201 Created`) tras radicar un ticket en el portal (BE-11, RF1).
+
+    Incluye `id`, `radicado`, resumen básico (`estado`, `asunto`, `prioridad`,
+    `canal_origen`, `fecha_creacion`), el objeto `modulo` (`id`, `nombre`) y el
+    `mensaje` de confirmación que consume `RadicadoModal.vue` (FE-07).
+    """
+
+    modulo = serializers.SerializerMethodField()
+    mensaje = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id",
+            "radicado",
+            "estado",
+            "prioridad",
+            "canal_origen",
+            "fecha_creacion",
+            "asunto",
+            "modulo",
+            "mensaje",
+        ]
+        read_only_fields = fields
+
+    def get_modulo(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.modulo_id,
+            "nombre": obj.modulo.nombre,
+        }
+
+    def get_mensaje(self, obj: Ticket) -> str:
+        return "Incidencia radicada exitosamente. Se envió un comprobante al correo registrado."
