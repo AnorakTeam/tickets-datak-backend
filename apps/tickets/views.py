@@ -4,38 +4,82 @@ Una vista recibe la petición HTTP, consulta la base de datos y devuelve la
 respuesta usando un serializer.
 """
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Case, IntegerField, Prefetch, Value, When
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from apps.companies.permissions import IsClientUser
 from apps.core.pagination import StandardResultsPagination
-from apps.tickets.models import EstadoChoices, Ticket, TicketItem
-from apps.tickets.serializers import ClientTicketDetailSerializer, ClientTicketListSerializer
+from apps.tickets.models import CanalOrigenChoices, EstadoChoices, Ticket, TicketItem
+from apps.tickets.serializers import (
+    ClientTicketCreatedResponseSerializer,
+    ClientTicketCreateSerializer,
+    ClientTicketDetailSerializer,
+    ClientTicketListSerializer,
+)
+from apps.tickets.services import TicketCreationService
 
 
-class ClientTicketListView(generics.ListAPIView):
-    """`GET /api/v1/client/tickets/?estado=&page=` — "Mis tickets" del cliente (BE-12, RF4).
+class ClientTicketListView(generics.ListCreateAPIView):
+    """`GET` y `POST /api/v1/client/tickets/` — Listado y creación de tickets del cliente (BE-11 RF1, BE-12 RF4).
 
-    - Solo clientes autenticados (IsAuthenticated + IsClientUser).
-    - Multi-tenant (RNF2): solo devuelve tickets de la empresa del usuario que
-      hace la petición (`request.user.empresa`). La empresa NUNCA se lee de la URL
-      ni del cuerpo de la petición.
-    - Orden: primero los tickets en estado "Abierto"; dentro de cada grupo, del
-      más reciente al más antiguo.
-    - Filtro opcional `?estado=` con los valores del catálogo
-      (Abierto, En gestion, Resuelto, No procedente).
-    - Paginado de 10 en 10 (`?page=`).
-
-    Nota para BE-11 (POST en esta misma URL): se puede convertir esta vista en
-    `ListCreateAPIView` y agregar el serializer de creación, en vez de crear
-    otra vista para la misma ruta.
+    - Solo clientes autenticados (`IsAuthenticated` + `IsClientUser`).
+    - `GET`: lista paginada de los tickets de `request.user.empresa`, ordenando
+      primero los `Abierto` y luego por `fecha_creacion` descendente.
+    - `POST`: crea un nuevo ticket inyectando `empresa=request.user.empresa`,
+      `creado_por=request.user` y `canal_origen='Portal'`, delegando en
+      `TicketCreationService` (BE-08) y despachando el comprobante por correo (BE-09).
     """
 
     serializer_class = ClientTicketListSerializer
     permission_classes = [IsAuthenticated, IsClientUser]
     pagination_class = StandardResultsPagination
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return ClientTicketCreateSerializer
+        return ClientTicketListSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            ticket = TicketCreationService.create_ticket(
+                creado_por=request.user,
+                empresa=request.user.empresa,
+                modulo_id=datos["modulo_id"],
+                pestana_o_documento=datos["pestana_o_documento"],
+                asunto=datos["asunto"],
+                descripcion=datos["descripcion"],
+                mensaje_error=datos.get("mensaje_error", ""),
+                prioridad=datos["prioridad"],
+                canal_origen=CanalOrigenChoices.PORTAL,
+            )
+        except DjangoValidationError as exc:
+            errores = (
+                exc.message_dict
+                if hasattr(exc, "message_dict")
+                else {"non_field_errors": exc.messages}
+            )
+            primer_mensaje = (
+                next(iter(errores.values()))[0] if errores else "Los datos enviados no son válidos."
+            )
+            return Response(
+                {
+                    "detail": primer_mensaje,
+                    "errors": errores,
+                    **errores,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        salida = ClientTicketCreatedResponseSerializer(ticket)
+        return Response(salida.data, status=status.HTTP_201_CREATED)
 
     def get_queryset(self):
         """Arma la consulta de tickets que puede ver este cliente."""
