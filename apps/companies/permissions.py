@@ -1,0 +1,32 @@
+"""Permisos de Django REST Framework basados en el rol del usuario.
+
+Un "permiso" de DRF decide si una petición puede usar un endpoint. Se aplica en
+una vista con `permission_classes = [...]`; si devuelve False, DRF responde 403
+(o 401 si el usuario no envió token).
+"""
+
+from rest_framework.permissions import BasePermission
+
+from apps.companies.models import RolChoices
+
+
+class IsClientUser(BasePermission):
+    """Solo deja pasar a usuarios con rol `cliente` que pertenecen a una empresa.
+
+    Se usa en los endpoints del portal del cliente (por ejemplo "Mis tickets").
+    El personal interno (agentes y responsables) usa otros endpoints.
+    """
+
+    # Mensaje en español que DRF devuelve en la respuesta 403.
+    message = "Solo los usuarios con rol cliente pueden acceder a este recurso."
+
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario
+            and usuario.is_authenticated
+            and usuario.rol == RolChoices.CLIENTE
+            # Por la restricción del modelo un cliente siempre tiene empresa,
+            # pero se revisa igual para no filtrar con empresa vacía nunca.
+            and usuario.empresa_id is not None
+        )
