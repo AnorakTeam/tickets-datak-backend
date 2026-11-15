@@ -1,15 +1,17 @@
 """Modelos de la app `tickets`.
 
-Contiene el modelo `Ticket` (tarea BE-05): la entidad central del sistema, que
-representa una incidencia de soporte reportada por un cliente de Datak.co.
-
-Los campos siguen la sección 3.4 de ARCHITECTURE_AND_DATA_MODEL_REFERENCE.md y
-el issue #18. El modelo tiene EXACTAMENTE 20 campos (los acordados en el FP8,
-archivo lógico interno de complejidad MEDIA). No se deben agregar, quitar ni
-renombrar campos sin actualizar esa documentación.
+Contiene:
+- `Ticket` (tarea BE-05): la entidad central del sistema, que representa una
+  incidencia de soporte reportada por un cliente de Datak.co. Tiene EXACTAMENTE
+  20 campos (sección 3.4 de ARCHITECTURE_AND_DATA_MODEL_REFERENCE.md, FP8,
+  archivo lógico interno de complejidad MEDIA). No se deben agregar, quitar ni
+  renombrar campos sin actualizar esa documentación.
+- `TicketItem` (tarea BE-06): el historial de cada ticket. Cada acción (crear,
+  asignar, cambiar estado, nota interna, resolver...) queda como un registro
+  que NO se puede modificar ni borrar (RNF5, sección 3.5 del mismo documento).
 """
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
 
@@ -253,3 +255,147 @@ class Ticket(models.Model):
     def __str__(self) -> str:
         """Texto con el que se muestra el ticket. Ejemplo: "TK-2026-000001 - No carga la factura"."""
         return f"{self.radicado} - {self.asunto}"
+
+
+# --------------------------------------------------------------------------
+# Historial inmutable del ticket (BE-06)
+# --------------------------------------------------------------------------
+
+# Mensajes que se muestran cuando alguien intenta modificar o borrar el historial.
+MENSAJE_NO_MODIFICABLE = "Los registros del historial del ticket no se pueden modificar."
+MENSAJE_NO_ELIMINABLE = "Los registros del historial del ticket no se pueden eliminar."
+
+
+class TipoAccionChoices(models.TextChoices):
+    """Tipo de evento que se registra en el historial del ticket."""
+
+    CREACION = "CREACION", "Creación"
+    ASIGNACION = "ASIGNACION", "Asignación"
+    CAMBIO_ESTADO = "CAMBIO_ESTADO", "Cambio de estado"
+    CLASIFICACION = "CLASIFICACION", "Clasificación"
+    NOTA_INTERNA = "NOTA_INTERNA", "Nota interna"
+    RESOLUCION = "RESOLUCION", "Resolución"
+    NO_PROCEDENTE = "NO_PROCEDENTE", "No procedente"
+
+
+class TicketItemQuerySet(models.QuerySet):
+    """Consultas del historial que bloquean los cambios masivos.
+
+    `save()` y `delete()` del modelo solo protegen un registro a la vez. Pero
+    Django también permite cambiar o borrar muchos de una sola vez con
+    `TicketItem.objects.filter(...).update(...)` o `.delete()`, que NO pasan por
+    esos métodos. Este QuerySet bloquea también esos caminos, para que el
+    historial sea realmente de solo inserción (RNF5).
+    """
+
+    def update(self, **kwargs):
+        raise PermissionDenied(MENSAJE_NO_MODIFICABLE)
+
+    def delete(self):
+        raise PermissionDenied(MENSAJE_NO_ELIMINABLE)
+
+
+class TicketItem(models.Model):
+    """Registro del historial de un ticket (10 campos). Solo se puede crear.
+
+    Funciona como una bitácora ("event sourcing"): en lugar de editar un evento
+    anterior, cada cambio se agrega como un registro nuevo. Así queda la
+    trazabilidad completa de quién hizo qué y cuándo.
+
+    Regla de visibilidad (RNF2): los registros con `es_interna=True` son notas
+    del equipo de soporte y NUNCA se muestran al cliente; eso lo aplican los
+    serializers de los endpoints del cliente (BE-13).
+    """
+
+    # 1. id: no se declara; Django crea un BigAutoField (DEFAULT_AUTO_FIELD).
+
+    # 2. Ticket al que pertenece el evento. CASCADE: el historial vive y muere
+    #    con su ticket. related_name="historial" permite `ticket.historial.all()`.
+    ticket = models.ForeignKey(
+        Ticket,
+        verbose_name="ticket",
+        on_delete=models.CASCADE,
+        related_name="historial",
+    )
+
+    # 3. Usuario que hizo la acción (cliente, agente o responsable).
+    #    PROTECT: no se puede borrar un usuario que aparece en el historial.
+    actor = models.ForeignKey(
+        Usuario,
+        verbose_name="actor",
+        on_delete=models.PROTECT,
+        related_name="acciones_historial",
+    )
+
+    # 4. Qué tipo de acción fue (ver TipoAccionChoices).
+    tipo_accion = models.CharField(
+        "tipo de acción",
+        max_length=30,
+        choices=TipoAccionChoices.choices,
+    )
+
+    # 5-6. Estado del ticket antes y después de la acción. Quedan vacíos cuando
+    #      la acción no cambia el estado (por ejemplo, una nota interna).
+    estado_anterior = models.CharField(
+        "estado anterior",
+        max_length=30,
+        choices=EstadoChoices.choices,
+        blank=True,
+        default="",
+    )
+    estado_nuevo = models.CharField(
+        "estado nuevo",
+        max_length=30,
+        choices=EstadoChoices.choices,
+        blank=True,
+        default="",
+    )
+
+    # 7. Responsable asignado en esta acción (solo para ASIGNACION).
+    #    SET_NULL: si se borra ese usuario, el evento se conserva sin ese dato.
+    responsable_asignado = models.ForeignKey(
+        Usuario,
+        verbose_name="responsable asignado",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="asignaciones_historial",
+    )
+
+    # 8. True = nota interna del equipo de soporte, oculta para el cliente.
+    es_interna = models.BooleanField("es interna", default=False)
+
+    # 9. Comentario u observación del evento (opcional).
+    observaciones = models.TextField("observaciones", blank=True, default="")
+
+    # 10. Momento en que ocurrió el evento; Django lo llena al crear.
+    fecha_creacion = models.DateTimeField("fecha de creación", auto_now_add=True)
+
+    # Usa el QuerySet que bloquea update() y delete() masivos.
+    objects = TicketItemQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "registro de historial"
+        verbose_name_plural = "historial de tickets"
+        # Orden cronológico: del evento más antiguo al más reciente.
+        # `id` desempata eventos creados en el mismo instante.
+        ordering = ["fecha_creacion", "id"]
+
+    def save(self, *args, **kwargs):
+        """Guarda el registro SOLO si es nuevo; si ya existe, lo impide.
+
+        Un registro nuevo todavía no tiene `pk` (id), así que se guarda normal.
+        Si ya tiene `pk`, ya está en la base de datos y cambiarlo alteraría el
+        historial, por eso se lanza PermissionDenied.
+        """
+        if self.pk is not None:
+            raise PermissionDenied(MENSAJE_NO_MODIFICABLE)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Nunca permite borrar un registro del historial."""
+        raise PermissionDenied(MENSAJE_NO_ELIMINABLE)
+
+    def __str__(self) -> str:
+        """Ejemplo: "TK-2026-000001 · CREACION"."""
+        return f"{self.ticket.radicado} · {self.tipo_accion}"
