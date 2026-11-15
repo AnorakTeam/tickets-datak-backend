@@ -4,15 +4,15 @@ Una vista recibe la petición HTTP, consulta la base de datos y devuelve la
 respuesta usando un serializer.
 """
 
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, IntegerField, Prefetch, Value, When
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 
 from apps.companies.permissions import IsClientUser
 from apps.core.pagination import StandardResultsPagination
-from apps.tickets.models import EstadoChoices, Ticket
-from apps.tickets.serializers import ClientTicketListSerializer
+from apps.tickets.models import EstadoChoices, Ticket, TicketItem
+from apps.tickets.serializers import ClientTicketDetailSerializer, ClientTicketListSerializer
 
 
 class ClientTicketListView(generics.ListAPIView):
@@ -64,3 +64,41 @@ class ClientTicketListView(generics.ListAPIView):
         # 4. select_related trae el módulo en la misma consulta (para
         #    `modulo_nombre`), evitando una consulta extra por cada fila (RNF3).
         return queryset.select_related("modulo")
+
+
+class ClientTicketDetailView(generics.RetrieveAPIView):
+    """`GET /api/v1/client/tickets/{radicado}/` — detalle de un ticket (BE-13, RF5).
+
+    - Solo clientes autenticados (IsAuthenticated + IsClientUser).
+    - Se busca por `radicado` (por ejemplo TK-2026-000001), no por id.
+    - Multi-tenant (RNF2): la búsqueda se hace SOLO dentro de los tickets de la
+      empresa del usuario. Si el radicado existe pero es de otra empresa, la
+      respuesta es 404 "No encontrado" (no 403), para no revelar que ese
+      radicado existe en otra empresa (evita "enumerar" tickets ajenos).
+    - Nunca devuelve el responsable, el agente ni las notas internas.
+    """
+
+    serializer_class = ClientTicketDetailSerializer
+    permission_classes = [IsAuthenticated, IsClientUser]
+    # Campo del modelo con el que se busca el ticket y nombre del parámetro en la URL.
+    lookup_field = "radicado"
+
+    def get_queryset(self):
+        """Tickets de la empresa del usuario, con su historial público ya cargado."""
+        return (
+            Ticket.objects.filter(empresa_id=self.request.user.empresa_id)
+            .select_related("modulo")
+            .prefetch_related(
+                # Prefetch carga el historial en una sola consulta extra y, con
+                # el filtro, deja por fuera las notas internas (es_interna=True).
+                # El resultado queda en `ticket.historial_publico`, que es lo que
+                # usa el serializer. order_by asegura el orden cronológico.
+                Prefetch(
+                    "historial",
+                    queryset=TicketItem.objects.filter(es_interna=False).order_by(
+                        "fecha_creacion", "id"
+                    ),
+                    to_attr="historial_publico",
+                )
+            )
+        )
