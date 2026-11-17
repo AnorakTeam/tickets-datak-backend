@@ -6,7 +6,7 @@ frontend, y define exactamente qué campos se exponen.
 
 from rest_framework import serializers
 
-from apps.tickets.models import PrioridadChoices, Ticket, TicketItem
+from apps.tickets.models import CanalOrigenChoices, PrioridadChoices, Ticket, TicketItem
 
 
 class ClientTicketListSerializer(serializers.ModelSerializer):
@@ -224,3 +224,172 @@ class SupportTicketInboxSerializer(serializers.ModelSerializer):
             "nombre": obj.responsable.nombre,
             "correo": obj.responsable.correo,
         }
+
+
+class SupportTicketHistoryItemSerializer(serializers.ModelSerializer):
+    """Evento completo del historial (`TicketItem`) para la vista interna de soporte (BE-20, RF8).
+
+    A diferencia del historial del portal del cliente, aquí SÍ se incluyen las
+    notas internas (`es_interna=True`), el `actor` y el `responsable_asignado`.
+    """
+
+    actor = serializers.SerializerMethodField()
+    responsable_asignado = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketItem
+        fields = [
+            "id",
+            "ticket",
+            "actor",
+            "tipo_accion",
+            "estado_anterior",
+            "estado_nuevo",
+            "responsable_asignado",
+            "es_interna",
+            "observaciones",
+            "fecha_creacion",
+        ]
+        read_only_fields = fields
+
+    def get_actor(self, obj: TicketItem) -> dict:
+        return {
+            "id": obj.actor_id,
+            "nombre": obj.actor.nombre,
+            "correo": obj.actor.correo,
+            "rol": obj.actor.rol,
+        }
+
+    def get_responsable_asignado(self, obj: TicketItem) -> dict | None:
+        if obj.responsable_asignado_id is None or obj.responsable_asignado is None:
+            return None
+        return {
+            "id": obj.responsable_asignado_id,
+            "nombre": obj.responsable_asignado.nombre,
+            "correo": obj.responsable_asignado.correo,
+            "rol": obj.responsable_asignado.rol,
+        }
+
+
+class SupportTicketDetailSerializer(serializers.ModelSerializer):
+    """Detalle completo de un `Ticket` para la consola interna de soporte (BE-20, RF8).
+
+    Expone los 20 campos de dominio del modelo `Ticket` junto con el `historial`
+    completo ordenado cronológicamente de forma ascendente (incluyendo `es_interna=True`).
+    """
+
+    empresa = serializers.SerializerMethodField()
+    modulo = serializers.SerializerMethodField()
+    creado_por = serializers.SerializerMethodField()
+    registrado_por_agente = serializers.SerializerMethodField()
+    responsable = serializers.SerializerMethodField()
+    historial = SupportTicketHistoryItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id",
+            "radicado",
+            "empresa",
+            "creado_por",
+            "registrado_por_agente",
+            "modulo",
+            "pestana_o_documento",
+            "asunto",
+            "descripcion",
+            "mensaje_error",
+            "prioridad",
+            "estado",
+            "clasificacion",
+            "canal_origen",
+            "responsable",
+            "comentario_solucion",
+            "motivo_no_procedente",
+            "fecha_creacion",
+            "fecha_actualizacion",
+            "fecha_resolucion",
+            "historial",
+        ]
+        read_only_fields = fields
+
+    def get_empresa(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.empresa_id,
+            "nombre": obj.empresa.nombre,
+            "identificacion": obj.empresa.identificacion,
+        }
+
+    def get_modulo(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.modulo_id,
+            "codigo": obj.modulo.codigo,
+            "nombre": obj.modulo.nombre,
+        }
+
+    def get_creado_por(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.creado_por_id,
+            "nombre": obj.creado_por.nombre,
+            "correo": obj.creado_por.correo,
+        }
+
+    def get_registrado_por_agente(self, obj: Ticket) -> dict | None:
+        if obj.registrado_por_agente_id is None or obj.registrado_por_agente is None:
+            return None
+        return {
+            "id": obj.registrado_por_agente_id,
+            "nombre": obj.registrado_por_agente.nombre,
+            "correo": obj.registrado_por_agente.correo,
+        }
+
+    def get_responsable(self, obj: Ticket) -> dict | None:
+        if obj.responsable_id is None or obj.responsable is None:
+            return None
+        return {
+            "id": obj.responsable_id,
+            "nombre": obj.responsable.nombre,
+            "correo": obj.responsable.correo,
+        }
+
+
+class SupportExternalTicketCreateSerializer(serializers.Serializer):
+    """Serializer de entrada para registrar tickets recibidos por canales externos (`POST /api/v1/support/tickets/`, BE-20, RF9)."""
+
+    empresa_id = serializers.IntegerField(required=True)
+    creado_por_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    modulo_id = serializers.IntegerField(required=True)
+    pestana_o_documento = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        max_length=255,
+    )
+    asunto = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        max_length=255,
+    )
+    descripcion = serializers.CharField(
+        required=True,
+        allow_blank=False,
+    )
+    mensaje_error = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default="",
+    )
+    prioridad = serializers.ChoiceField(
+        choices=PrioridadChoices.choices,
+        required=True,
+    )
+    canal_origen = serializers.ChoiceField(
+        choices=CanalOrigenChoices.choices,
+        required=True,
+    )
+
+    def validate_mensaje_error(self, value):
+        return value or ""

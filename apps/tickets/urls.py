@@ -5,6 +5,7 @@ from django.urls import path
 from apps.tickets.views import (
     ClientTicketDetailView,
     ClientTicketListView,
+    SupportTicketDetailView,
     SupportTicketInboxView,
 )
 
@@ -17,6 +18,12 @@ urlpatterns = [
         ClientTicketDetailView.as_view(),
         name="client-ticket-detail",
     ),
-    # GET /api/v1/support/tickets/ — bandeja unificada de soporte con filtros multi-tenant (BE-19, RF7).
+    # GET y POST /api/v1/support/tickets/ — bandeja unificada (BE-19 RF7) y creación externa (BE-20 RF9).
     path("support/tickets/", SupportTicketInboxView.as_view(), name="support-ticket-inbox"),
+    # GET /api/v1/support/tickets/{id}/ — detalle completo por id o radicado (BE-20 RF8).
+    path(
+        "support/tickets/<str:lookup>/",
+        SupportTicketDetailView.as_view(),
+        name="support-ticket-detail",
+    ),
 ]

@@ -48,3 +48,20 @@ class IsInternalSupportUser(BasePermission):
             and usuario.is_authenticated
             and usuario.rol in (RolChoices.AGENTE_SOPORTE, RolChoices.RESPONSABLE_ATENCION)
         )
+
+
+class IsSupportAgentUser(BasePermission):
+    """Permite el acceso exclusivamente a usuarios autenticados con rol `agente_soporte`.
+
+    Se utiliza para acciones exclusivas de agentes de soporte como registrar
+    tickets en nombre del cliente por canales externos (`POST /api/v1/support/tickets/`,
+    tarea BE-20, RF9).
+    """
+
+    message = "Solo los agentes de soporte pueden realizar esta acción."
+
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario and usuario.is_authenticated and usuario.rol == RolChoices.AGENTE_SOPORTE
+        )
