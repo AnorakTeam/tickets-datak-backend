@@ -10,7 +10,7 @@ llega). Aquí están:
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from apps.companies.models import ModuloContratado
+from apps.companies.models import Empresa, ModuloContratado
 
 
 class LoginTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -89,4 +89,22 @@ class ModuloContratadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ModuloContratado
         fields = ["id", "codigo", "nombre"]
+        read_only_fields = fields
+
+
+class SupportEmpresaCatalogSerializer(serializers.ModelSerializer):
+    """Empresa activa junto con sus módulos contratados activos para `GET /api/v1/support/empresas/` (BE-19, RF7).
+
+    Se utiliza en la consola interna de soporte para poblar los selectores de
+    filtro por empresa y módulo sin realizar consultas N+1 (`prefetch_related`).
+    """
+
+    modulos_contratados = ModuloContratadoSerializer(
+        source="modulos_activos", many=True, read_only=True
+    )
+    modulos = ModuloContratadoSerializer(source="modulos_activos", many=True, read_only=True)
+
+    class Meta:
+        model = Empresa
+        fields = ["id", "nombre", "identificacion", "modulos_contratados", "modulos"]
         read_only_fields = fields

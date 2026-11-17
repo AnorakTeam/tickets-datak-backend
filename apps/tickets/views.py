@@ -5,20 +5,27 @@ respuesta usando un serializer.
 """
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Case, IntegerField, Prefetch, Value, When
+from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.companies.permissions import IsClientUser
-from apps.core.pagination import StandardResultsPagination
-from apps.tickets.models import CanalOrigenChoices, EstadoChoices, Ticket, TicketItem
+from apps.companies.permissions import IsClientUser, IsInternalSupportUser
+from apps.core.pagination import StandardResultsPagination, SupportInboxPagination
+from apps.tickets.models import (
+    CanalOrigenChoices,
+    EstadoChoices,
+    PrioridadChoices,
+    Ticket,
+    TicketItem,
+)
 from apps.tickets.serializers import (
     ClientTicketCreatedResponseSerializer,
     ClientTicketCreateSerializer,
     ClientTicketDetailSerializer,
     ClientTicketListSerializer,
+    SupportTicketInboxSerializer,
 )
 from apps.tickets.services import TicketCreationService
 
@@ -146,3 +153,79 @@ class ClientTicketDetailView(generics.RetrieveAPIView):
                 )
             )
         )
+
+
+class SupportTicketInboxView(generics.ListAPIView):
+    """`GET /api/v1/support/tickets/` — Bandeja unificada de soporte con filtros multi-tenant (BE-19, RF7).
+
+    - Acceso restringido a personal interno (`agente_soporte` y `responsable_atencion`).
+    - Consulta tickets de todas las empresas optimizando con `select_related`.
+    - Soporta filtros por query params: `empresa`, `estado`, `prioridad`,
+      `canal_origen` (o `canal`), `responsable` y `search` (`radicado` o `asunto`).
+    - Ordena primero los tickets en estado `'Abierto'` y luego por `-fecha_creacion`.
+    - Paginación explícita de 20 resultados por página (`SupportInboxPagination`).
+    """
+
+    serializer_class = SupportTicketInboxSerializer
+    permission_classes = [IsAuthenticated, IsInternalSupportUser]
+    pagination_class = SupportInboxPagination
+
+    def get_queryset(self):
+        queryset = Ticket.objects.select_related(
+            "empresa",
+            "modulo",
+            "creado_por",
+            "responsable",
+        )
+        params = self.request.query_params
+
+        empresa = params.get("empresa") or params.get("empresa_id")
+        if empresa:
+            try:
+                queryset = queryset.filter(empresa_id=int(empresa))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"empresa": ["ID de empresa no válido."]}) from exc
+
+        estado = params.get("estado")
+        if estado:
+            if estado not in EstadoChoices.values:
+                opciones = ", ".join(EstadoChoices.values)
+                raise ValidationError({"estado": [f"Estado no válido. Opciones: {opciones}."]})
+            queryset = queryset.filter(estado=estado)
+
+        prioridad = params.get("prioridad")
+        if prioridad:
+            if prioridad not in PrioridadChoices.values:
+                opciones = ", ".join(PrioridadChoices.values)
+                raise ValidationError(
+                    {"prioridad": [f"Prioridad no válida. Opciones: {opciones}."]}
+                )
+            queryset = queryset.filter(prioridad=prioridad)
+
+        canal_origen = params.get("canal_origen") or params.get("canal")
+        if canal_origen:
+            if canal_origen not in CanalOrigenChoices.values:
+                opciones = ", ".join(CanalOrigenChoices.values)
+                raise ValidationError(
+                    {"canal_origen": [f"Canal de origen no válido. Opciones: {opciones}."]}
+                )
+            queryset = queryset.filter(canal_origen=canal_origen)
+
+        responsable = params.get("responsable") or params.get("responsable_id")
+        if responsable:
+            try:
+                queryset = queryset.filter(responsable_id=int(responsable))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"responsable": ["ID de responsable no válido."]}) from exc
+
+        search = (params.get("search") or "").strip()
+        if search:
+            queryset = queryset.filter(Q(radicado__icontains=search) | Q(asunto__icontains=search))
+
+        return queryset.annotate(
+            is_abierto=Case(
+                When(estado=EstadoChoices.ABIERTO, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        ).order_by("is_abierto", "-fecha_creacion", "-id")

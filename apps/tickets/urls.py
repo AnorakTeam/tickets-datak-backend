@@ -2,17 +2,21 @@
 
 from django.urls import path
 
-from apps.tickets.views import ClientTicketDetailView, ClientTicketListView
+from apps.tickets.views import (
+    ClientTicketDetailView,
+    ClientTicketListView,
+    SupportTicketInboxView,
+)
 
 urlpatterns = [
-    # GET /api/v1/client/tickets/ — "Mis tickets" del cliente (BE-12).
-    # BE-11 agregará el POST (crear ticket) en esta misma ruta.
+    # GET y POST /api/v1/client/tickets/ — "Mis tickets" (BE-12) y creación (BE-11).
     path("client/tickets/", ClientTicketListView.as_view(), name="client-ticket-list"),
-    # GET /api/v1/client/tickets/TK-2026-000001/ — detalle de un ticket (BE-13).
-    # <str:radicado> toma ese pedazo de la URL y lo pasa a la vista como `radicado`.
+    # GET /api/v1/client/tickets/TK-2026-000001/ — detalle de un ticket para el cliente (BE-13).
     path(
         "client/tickets/<str:radicado>/",
         ClientTicketDetailView.as_view(),
         name="client-ticket-detail",
     ),
+    # GET /api/v1/support/tickets/ — bandeja unificada de soporte con filtros multi-tenant (BE-19, RF7).
+    path("support/tickets/", SupportTicketInboxView.as_view(), name="support-ticket-inbox"),
 ]

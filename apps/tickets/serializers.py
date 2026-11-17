@@ -162,3 +162,65 @@ class ClientTicketCreatedResponseSerializer(serializers.ModelSerializer):
 
     def get_mensaje(self, obj: Ticket) -> str:
         return "Incidencia radicada exitosamente. Se envió un comprobante al correo registrado."
+
+
+class SupportTicketInboxSerializer(serializers.ModelSerializer):
+    """Fila de la bandeja unificada de soporte (`GET /api/v1/support/tickets/`, BE-19, RF7).
+
+    Expone la información completa de triaje para el personal interno (`agente_soporte`
+    y `responsable_atencion`), incluyendo empresa, módulo, cliente reportante y
+    responsable asignado.
+    """
+
+    empresa = serializers.SerializerMethodField()
+    modulo = serializers.SerializerMethodField()
+    creado_por = serializers.SerializerMethodField()
+    responsable = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id",
+            "radicado",
+            "asunto",
+            "estado",
+            "prioridad",
+            "canal_origen",
+            "clasificacion",
+            "fecha_creacion",
+            "empresa",
+            "modulo",
+            "creado_por",
+            "responsable",
+        ]
+        read_only_fields = fields
+
+    def get_empresa(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.empresa_id,
+            "nombre": obj.empresa.nombre,
+            "identificacion": obj.empresa.identificacion,
+        }
+
+    def get_modulo(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.modulo_id,
+            "codigo": obj.modulo.codigo,
+            "nombre": obj.modulo.nombre,
+        }
+
+    def get_creado_por(self, obj: Ticket) -> dict:
+        return {
+            "id": obj.creado_por_id,
+            "nombre": obj.creado_por.nombre,
+            "correo": obj.creado_por.correo,
+        }
+
+    def get_responsable(self, obj: Ticket) -> dict | None:
+        if obj.responsable_id is None or obj.responsable is None:
+            return None
+        return {
+            "id": obj.responsable_id,
+            "nombre": obj.responsable.nombre,
+            "correo": obj.responsable.correo,
+        }
