@@ -5,12 +5,15 @@ respuesta usando un serializer.
 """
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.companies.models import Empresa, RolChoices, Usuario
 from apps.companies.permissions import (
@@ -25,6 +28,7 @@ from apps.tickets.models import (
     PrioridadChoices,
     Ticket,
     TicketItem,
+    TipoAccionChoices,
 )
 from apps.tickets.serializers import (
     ClientTicketCreatedResponseSerializer,
@@ -32,7 +36,9 @@ from apps.tickets.serializers import (
     ClientTicketDetailSerializer,
     ClientTicketListSerializer,
     SupportExternalTicketCreateSerializer,
+    SupportTicketClassifySerializer,
     SupportTicketDetailSerializer,
+    SupportTicketDismissSerializer,
     SupportTicketInboxSerializer,
 )
 from apps.tickets.services import TicketCreationService
@@ -382,3 +388,157 @@ class SupportTicketDetailView(generics.RetrieveAPIView):
 
         self.check_object_permissions(self.request, obj)
         return obj
+
+
+# --------------------------------------------------------------------------
+# Acciones de soporte sobre un ticket (BE-21 y siguientes).
+#
+# Las URL usan `{id}`, que (igual que el detalle de BE-20) puede ser el id
+# numérico o el radicado (TK-AAAA-NNNNNN). Las dos funciones de abajo las
+# comparten todas las acciones para no repetir código.
+# --------------------------------------------------------------------------
+
+
+def obtener_ticket_para_actualizar(lookup):
+    """Busca el ticket por id o radicado y lo BLOQUEA mientras dura la transacción.
+
+    `select_for_update()` evita que dos agentes cambien el mismo ticket al mismo
+    tiempo (el segundo espera a que termine el primero). Solo funciona dentro de
+    `transaction.atomic()`. Si el ticket no existe, responde 404.
+    """
+    valor = str(lookup).strip()
+    queryset = Ticket.objects.select_for_update()
+    if valor.isdigit():
+        return get_object_or_404(queryset, pk=int(valor))
+    return get_object_or_404(queryset, radicado=valor)
+
+
+def respuesta_detalle_soporte(ticket_id, codigo_estado=status.HTTP_200_OK):
+    """Devuelve el detalle completo del ticket (mismo formato que BE-20) ya actualizado.
+
+    Se vuelve a consultar el ticket con sus relaciones y el historial para que
+    la respuesta incluya el nuevo registro de `TicketItem`.
+    """
+    ticket = (
+        Ticket.objects.select_related(
+            "empresa", "modulo", "creado_por", "responsable", "registrado_por_agente"
+        )
+        .prefetch_related(
+            Prefetch(
+                "historial",
+                queryset=TicketItem.objects.select_related(
+                    "actor", "responsable_asignado"
+                ).order_by("fecha_creacion", "id"),
+            )
+        )
+        .get(pk=ticket_id)
+    )
+    return Response(SupportTicketDetailSerializer(ticket).data, status=codigo_estado)
+
+
+class SupportTicketClassifyView(APIView):
+    """`PATCH /api/v1/support/tickets/{id}/clasificar/` — clasificar el ticket (BE-21, RF10).
+
+    - Solo `agente_soporte` (sección 5.4 del documento de arquitectura).
+    - Guarda la `clasificacion` y, si se envía, la nueva `prioridad`.
+    - No cambia el estado del ticket.
+    - Deja un registro en el historial: `TicketItem(tipo_accion='CLASIFICACION')`
+      con `es_interna=True`, porque la clasificación es información interna
+      que el cliente no ve (RNF2).
+    """
+
+    permission_classes = [IsAuthenticated, IsSupportAgentUser]
+
+    def patch(self, request, lookup):
+        # 1. Validar el cuerpo (si algo está mal, DRF responde 400 aquí mismo).
+        serializer = SupportTicketClassifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        clasificacion = serializer.validated_data["clasificacion"]
+        prioridad_nueva = serializer.validated_data.get("prioridad")
+
+        # 2. Todo dentro de una transacción: o se guarda el ticket Y el
+        #    historial, o no se guarda nada.
+        with transaction.atomic():
+            ticket = obtener_ticket_para_actualizar(lookup)
+            prioridad_anterior = ticket.prioridad
+
+            ticket.clasificacion = clasificacion
+            if prioridad_nueva:
+                ticket.prioridad = prioridad_nueva
+            # `fecha_actualizacion` se incluye para que `auto_now` la actualice.
+            ticket.save(update_fields=["clasificacion", "prioridad", "fecha_actualizacion"])
+
+            # 3. Texto del historial, por ejemplo:
+            #    "Clasificado como Bug. Prioridad: Media -> Alta."
+            observaciones = f"Clasificado como {clasificacion}."
+            if prioridad_nueva and prioridad_nueva != prioridad_anterior:
+                observaciones += f" Prioridad: {prioridad_anterior} -> {prioridad_nueva}."
+
+            TicketItem.objects.create(
+                ticket=ticket,
+                actor=request.user,
+                tipo_accion=TipoAccionChoices.CLASIFICACION,
+                es_interna=True,
+                observaciones=observaciones,
+            )
+
+        return respuesta_detalle_soporte(ticket.pk)
+
+
+class SupportTicketDismissView(APIView):
+    """`POST /api/v1/support/tickets/{id}/no-procedente/` — desestimar el ticket (BE-21, RF12).
+
+    - Solo `agente_soporte` (sección 5.4 del documento de arquitectura).
+    - `motivo_no_procedente` es obligatorio (400 si falta o está vacío).
+    - Solo se puede desde "Abierto" o "En gestion" (máquina de estados, sección 4).
+      Si el ticket ya está "Resuelto" o "No procedente" responde 400 y no cambia nada.
+    - Cambia el estado a "No procedente", guarda el motivo y la `fecha_resolucion`.
+    - Deja un registro `TicketItem(tipo_accion='NO_PROCEDENTE')` visible para el
+      cliente (`es_interna=False`), con el motivo como observación.
+    """
+
+    permission_classes = [IsAuthenticated, IsSupportAgentUser]
+
+    # Estados finales: desde aquí ya no se puede pasar a "No procedente".
+    ESTADOS_CERRADOS = (EstadoChoices.RESUELTO, EstadoChoices.NO_PROCEDENTE)
+
+    def post(self, request, lookup):
+        serializer = SupportTicketDismissSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        motivo = serializer.validated_data["motivo_no_procedente"]
+
+        with transaction.atomic():
+            ticket = obtener_ticket_para_actualizar(lookup)
+
+            # Regla de la máquina de estados: un ticket cerrado no se desestima.
+            if ticket.estado in self.ESTADOS_CERRADOS:
+                mensaje = (
+                    f"No se puede marcar como No procedente un ticket en estado "
+                    f"{ticket.get_estado_display()}."
+                )
+                raise ValidationError({"detail": mensaje, "estado": [mensaje]})
+
+            estado_anterior = ticket.estado
+            ticket.estado = EstadoChoices.NO_PROCEDENTE
+            ticket.motivo_no_procedente = motivo
+            ticket.fecha_resolucion = timezone.now()
+            ticket.save(
+                update_fields=[
+                    "estado",
+                    "motivo_no_procedente",
+                    "fecha_resolucion",
+                    "fecha_actualizacion",
+                ]
+            )
+
+            TicketItem.objects.create(
+                ticket=ticket,
+                actor=request.user,
+                tipo_accion=TipoAccionChoices.NO_PROCEDENTE,
+                estado_anterior=estado_anterior,
+                estado_nuevo=EstadoChoices.NO_PROCEDENTE,
+                es_interna=False,
+                observaciones=motivo,
+            )
+
+        return respuesta_detalle_soporte(ticket.pk)
