@@ -6,7 +6,13 @@ frontend, y define exactamente qué campos se exponen.
 
 from rest_framework import serializers
 
-from apps.tickets.models import CanalOrigenChoices, PrioridadChoices, Ticket, TicketItem
+from apps.tickets.models import (
+    CanalOrigenChoices,
+    ClasificacionChoices,
+    PrioridadChoices,
+    Ticket,
+    TicketItem,
+)
 
 
 class ClientTicketListSerializer(serializers.ModelSerializer):
@@ -393,3 +399,58 @@ class SupportExternalTicketCreateSerializer(serializers.Serializer):
 
     def validate_mensaje_error(self, value):
         return value or ""
+
+
+# --------------------------------------------------------------------------
+# Triaje de soporte (BE-21): clasificar y marcar "No procedente".
+# Estos serializers solo VALIDAN lo que envía el agente; la respuesta se arma
+# con SupportTicketDetailSerializer (detalle completo del ticket).
+# --------------------------------------------------------------------------
+
+
+class SupportTicketClassifySerializer(serializers.Serializer):
+    """Cuerpo de `PATCH /api/v1/support/tickets/{id}/clasificar/` (BE-21, RF10).
+
+    - `clasificacion` (obligatorio): Error de uso, Bug o Solicitud de mejora.
+    - `prioridad` (opcional): Baja, Media, Alta o Critica. Si no se envía, el
+      ticket conserva la prioridad que ya tenía.
+    """
+
+    clasificacion = serializers.ChoiceField(
+        choices=ClasificacionChoices.choices,
+        error_messages={
+            "required": "La clasificación es obligatoria.",
+            "null": "La clasificación es obligatoria.",
+            "invalid_choice": (
+                "Clasificación no válida. Opciones: " + ", ".join(ClasificacionChoices.values) + "."
+            ),
+        },
+    )
+    prioridad = serializers.ChoiceField(
+        choices=PrioridadChoices.choices,
+        required=False,
+        error_messages={
+            "invalid_choice": (
+                "Prioridad no válida. Opciones: " + ", ".join(PrioridadChoices.values) + "."
+            ),
+        },
+    )
+
+
+class SupportTicketDismissSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/v1/support/tickets/{id}/no-procedente/` (BE-21, RF12).
+
+    `motivo_no_procedente` es obligatorio y no puede estar vacío ni tener solo
+    espacios (`trim_whitespace` quita los espacios antes de validar). Este
+    texto lo verá el cliente en el detalle de su ticket.
+    """
+
+    motivo_no_procedente = serializers.CharField(
+        trim_whitespace=True,
+        allow_blank=False,
+        error_messages={
+            "required": "El motivo de no procedente es obligatorio.",
+            "null": "El motivo de no procedente es obligatorio.",
+            "blank": "El motivo de no procedente no puede estar vacío.",
+        },
+    )

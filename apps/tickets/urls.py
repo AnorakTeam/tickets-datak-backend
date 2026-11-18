@@ -5,7 +5,9 @@ from django.urls import path
 from apps.tickets.views import (
     ClientTicketDetailView,
     ClientTicketListView,
+    SupportTicketClassifyView,
     SupportTicketDetailView,
+    SupportTicketDismissView,
     SupportTicketInboxView,
 )
 
@@ -25,5 +27,17 @@ urlpatterns = [
         "support/tickets/<str:lookup>/",
         SupportTicketDetailView.as_view(),
         name="support-ticket-detail",
+    ),
+    # PATCH /api/v1/support/tickets/{id}/clasificar/ — clasificación y prioridad (BE-21, RF10).
+    path(
+        "support/tickets/<str:lookup>/clasificar/",
+        SupportTicketClassifyView.as_view(),
+        name="support-ticket-classify",
+    ),
+    # POST /api/v1/support/tickets/{id}/no-procedente/ — desestimar con motivo (BE-21, RF12).
+    path(
+        "support/tickets/<str:lookup>/no-procedente/",
+        SupportTicketDismissView.as_view(),
+        name="support-ticket-dismiss",
     ),
 ]
