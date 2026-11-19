@@ -1,0 +1,20 @@
+Comprobante de Recepción de Incidencia — Soporte Datak.co
+=========================================================
+
+Hola {{ destinatario_nombre }},
+
+Hemos recibido exitosamente su reporte de soporte para la empresa {{ empresa_nombre }}.
+A continuación encontrará el resumen y comprobante de su solicitud:
+
+- Radicado: {{ radicado }}
+- Módulo afectado: {{ modulo }}
+- Asunto: {{ asunto }}
+- Pantalla o documento: {{ pestana_o_documento }}
+- Prioridad: {{ prioridad }}
+- Estado actual: {{ estado }}
+- Fecha y hora de registro: {{ fecha_registro }}
+
+Conserve el número de radicado ({{ radicado }}) para consultar el estado y avance de su incidencia desde el Portal del Cliente o a través de nuestro Chatbot de Soporte.
+
+Atentamente,
+Equipo de Soporte Técnico — Datak.co

@@ -1,10 +1,16 @@
 """Serializers de la app `companies`.
 
 Un serializer convierte objetos de Python/Django en JSON (y valida el JSON que
-llega). Aquí está el serializer del inicio de sesión con JWT (tarea BE-03).
+llega). Aquí están:
+- `LoginTokenObtainPairSerializer`: inicio de sesión con JWT (tarea BE-03).
+- `ModuloContratadoSerializer`: listado de módulos activos contratados por la
+  empresa autenticada para `GET /api/v1/modulos/` (tarea BE-10, RF2).
 """
 
+from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from apps.companies.models import ModuloContratado
 
 
 class LoginTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -70,3 +76,17 @@ class LoginTokenObtainPairSerializer(TokenObtainPairSerializer):
             ),
         }
         return data
+
+
+class ModuloContratadoSerializer(serializers.ModelSerializer):
+    """Representación JSON de un módulo contratado para `GET /api/v1/modulos/` (BE-10, RF2).
+
+    Expone únicamente `id`, `codigo` y `nombre`, tal como especifican la sección
+    5.2 de `ARCHITECTURE_AND_DATA_MODEL_REFERENCE.md` y la sección 4.3 del
+    contrato de API con el frontend (`ModuleSelect.vue`).
+    """
+
+    class Meta:
+        model = ModuloContratado
+        fields = ["id", "codigo", "nombre"]
+        read_only_fields = fields
