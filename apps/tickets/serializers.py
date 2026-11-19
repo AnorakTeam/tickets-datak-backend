@@ -6,6 +6,7 @@ frontend, y define exactamente qué campos se exponen.
 
 from rest_framework import serializers
 
+from apps.companies.models import RolChoices, Usuario
 from apps.tickets.models import (
     CanalOrigenChoices,
     ClasificacionChoices,
@@ -454,3 +455,58 @@ class SupportTicketDismissSerializer(serializers.Serializer):
             "blank": "El motivo de no procedente no puede estar vacío.",
         },
     )
+
+
+# --------------------------------------------------------------------------
+# Asignación de responsables (BE-22).
+# --------------------------------------------------------------------------
+
+# Roles del personal interno al que se le puede asignar un ticket.
+ROLES_ASIGNABLES = (RolChoices.RESPONSABLE_ATENCION, RolChoices.AGENTE_SOPORTE)
+
+
+class SupportStaffSerializer(serializers.ModelSerializer):
+    """Una persona del equipo interno para el desplegable de asignación (BE-22, RF11).
+
+    Se usa en `GET /api/v1/support/responsables/`. Solo expone lo necesario para
+    mostrar la opción en pantalla (nunca la contraseña ni otros datos).
+    """
+
+    class Meta:
+        model = Usuario
+        fields = ["id", "nombre", "correo", "rol"]
+        read_only_fields = fields
+
+
+class SupportTicketAssignSerializer(serializers.Serializer):
+    """Cuerpo de `PATCH /api/v1/support/tickets/{id}/asignar/` (BE-22, RF11).
+
+    `responsable_id` debe ser un usuario ACTIVO del personal interno
+    (`responsable_atencion` o `agente_soporte`). Si es un cliente, no existe o
+    está inactivo, responde 400.
+    """
+
+    responsable_id = serializers.IntegerField(
+        error_messages={
+            "required": "El responsable es obligatorio.",
+            "null": "El responsable es obligatorio.",
+            "invalid": "El responsable debe ser un id numérico.",
+        },
+    )
+
+    def validate_responsable_id(self, valor):
+        """Revisa que el usuario exista, esté activo y sea personal interno.
+
+        Devuelve el objeto `Usuario` completo (no solo el id), así la vista lo
+        usa directamente sin consultarlo otra vez.
+        """
+        responsable = Usuario.objects.filter(pk=valor).first()
+        if responsable is None:
+            raise serializers.ValidationError("El responsable indicado no existe.")
+        if responsable.rol not in ROLES_ASIGNABLES:
+            raise serializers.ValidationError(
+                "Solo se puede asignar a personal interno de soporte (no a clientes)."
+            )
+        if not responsable.activo:
+            raise serializers.ValidationError("El responsable indicado está inactivo.")
+        return responsable

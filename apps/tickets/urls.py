@@ -5,6 +5,8 @@ from django.urls import path
 from apps.tickets.views import (
     ClientTicketDetailView,
     ClientTicketListView,
+    SupportResponsablesView,
+    SupportTicketAssignView,
     SupportTicketClassifyView,
     SupportTicketDetailView,
     SupportTicketDismissView,
@@ -39,5 +41,17 @@ urlpatterns = [
         "support/tickets/<str:lookup>/no-procedente/",
         SupportTicketDismissView.as_view(),
         name="support-ticket-dismiss",
+    ),
+    # PATCH /api/v1/support/tickets/{id}/asignar/ — asignar o reasignar responsable (BE-22, RF11).
+    path(
+        "support/tickets/<str:lookup>/asignar/",
+        SupportTicketAssignView.as_view(),
+        name="support-ticket-assign",
+    ),
+    # GET /api/v1/support/responsables/ — personal asignable para el desplegable (BE-22, RF11).
+    path(
+        "support/responsables/",
+        SupportResponsablesView.as_view(),
+        name="support-responsables",
     ),
 ]
