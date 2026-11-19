@@ -3,6 +3,7 @@
 from django.urls import path
 
 from apps.tickets.views import ClientTicketDetailView, ClientTicketListView
+from apps.tickets.views_chatbot import ChatbotMensajesView
 
 urlpatterns = [
     # GET /api/v1/client/tickets/ — "Mis tickets" del cliente (BE-12).
@@ -15,4 +16,6 @@ urlpatterns = [
         ClientTicketDetailView.as_view(),
         name="client-ticket-detail",
     ),
+    # POST /api/v1/chatbot/mensajes/ — chatbot messaging endpoint (BE-15, RF3, RF6).
+    path("chatbot/mensajes/", ChatbotMensajesView.as_view(), name="chatbot-mensajes"),
 ]
