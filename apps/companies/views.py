@@ -1,10 +1,15 @@
-"""Vistas (endpoints) de la app `companies` (tarea BE-10, issue #23)."""
+"""Vistas (endpoints) de la app `companies` (tareas BE-10 y BE-19)."""
 
+from django.db.models import Prefetch
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
-from apps.companies.models import ModuloContratado
-from apps.companies.serializers import ModuloContratadoSerializer
+from apps.companies.models import Empresa, ModuloContratado
+from apps.companies.permissions import IsInternalSupportUser
+from apps.companies.serializers import (
+    ModuloContratadoSerializer,
+    SupportEmpresaCatalogSerializer,
+)
 
 
 class ModuloContratadoListView(generics.ListAPIView):
@@ -32,3 +37,29 @@ class ModuloContratadoListView(generics.ListAPIView):
             empresa=empresa,
             activo=True,
         ).order_by("nombre", "id")
+
+
+class SupportEmpresaCatalogListView(generics.ListAPIView):
+    """`GET /api/v1/support/empresas/` — Catálogo de empresas activas y sus módulos activos (BE-19, RF7).
+
+    Restringido al personal interno (`agente_soporte` y `responsable_atencion`).
+    Devuelve una lista directa sin paginar (`pagination_class = None`) optimizada
+    con `prefetch_related` para poblar los selectores de filtros en la consola de soporte.
+    """
+
+    serializer_class = SupportEmpresaCatalogSerializer
+    permission_classes = [IsAuthenticated, IsInternalSupportUser]
+    pagination_class = None
+
+    def get_queryset(self):
+        return (
+            Empresa.objects.filter(activa=True)
+            .prefetch_related(
+                Prefetch(
+                    "modulos_contratados",
+                    queryset=ModuloContratado.objects.filter(activo=True).order_by("nombre", "id"),
+                    to_attr="modulos_activos",
+                )
+            )
+            .order_by("nombre", "id")
+        )
