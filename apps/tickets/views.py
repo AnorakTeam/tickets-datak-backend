@@ -31,11 +31,14 @@ from apps.tickets.models import (
     TipoAccionChoices,
 )
 from apps.tickets.serializers import (
+    ROLES_ASIGNABLES,
     ClientTicketCreatedResponseSerializer,
     ClientTicketCreateSerializer,
     ClientTicketDetailSerializer,
     ClientTicketListSerializer,
     SupportExternalTicketCreateSerializer,
+    SupportStaffSerializer,
+    SupportTicketAssignSerializer,
     SupportTicketClassifySerializer,
     SupportTicketDetailSerializer,
     SupportTicketDismissSerializer,
@@ -539,6 +542,90 @@ class SupportTicketDismissView(APIView):
                 estado_nuevo=EstadoChoices.NO_PROCEDENTE,
                 es_interna=False,
                 observaciones=motivo,
+            )
+
+        return respuesta_detalle_soporte(ticket.pk)
+
+
+class SupportResponsablesView(generics.ListAPIView):
+    """`GET /api/v1/support/responsables/` — personal al que se puede asignar un ticket (BE-22, RF11).
+
+    - Accesible para el personal interno (`agente_soporte` y `responsable_atencion`),
+      porque la lista también sirve para el filtro por responsable de la bandeja.
+    - Devuelve los usuarios ACTIVOS con rol `responsable_atencion` o `agente_soporte`,
+      ordenados por nombre.
+    - Sin paginación: es la lista completa para un desplegable.
+    """
+
+    serializer_class = SupportStaffSerializer
+    permission_classes = [IsAuthenticated, IsInternalSupportUser]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Usuario.objects.filter(rol__in=ROLES_ASIGNABLES, activo=True).order_by(
+            "nombre", "id"
+        )
+
+
+class SupportTicketAssignView(APIView):
+    """`PATCH /api/v1/support/tickets/{id}/asignar/` — asignar o reasignar responsable (BE-22, RF11).
+
+    - Solo `agente_soporte` (sección 5.4 del documento de arquitectura).
+    - `responsable_id` debe ser personal interno activo; un cliente da 400.
+    - Estado (máquina de estados, sección 4):
+        * "Abierto"    -> pasa a "En gestion" (asignación inicial).
+        * "En gestion" -> se queda en "En gestion" (reasignación).
+        * "Resuelto" o "No procedente" -> 400, un ticket cerrado no se asigna.
+    - Deja un registro `TicketItem(tipo_accion='ASIGNACION')` con el
+      `responsable_asignado` y el estado anterior/nuevo. Es visible para el
+      cliente (así ve que su ticket pasó a "En gestión"), pero la observación
+      NO dice el nombre del responsable, y el portal del cliente no muestra
+      `actor` ni `responsable_asignado` (RNF2).
+    """
+
+    permission_classes = [IsAuthenticated, IsSupportAgentUser]
+
+    ESTADOS_CERRADOS = (EstadoChoices.RESUELTO, EstadoChoices.NO_PROCEDENTE)
+
+    def patch(self, request, lookup):
+        serializer = SupportTicketAssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # validate_responsable_id ya devolvió el objeto Usuario.
+        responsable = serializer.validated_data["responsable_id"]
+
+        with transaction.atomic():
+            ticket = obtener_ticket_para_actualizar(lookup)
+
+            if ticket.estado in self.ESTADOS_CERRADOS:
+                mensaje = (
+                    f"No se puede asignar un responsable a un ticket en estado "
+                    f"{ticket.get_estado_display()}."
+                )
+                raise ValidationError({"detail": mensaje, "estado": [mensaje]})
+
+            estado_anterior = ticket.estado
+            # Si ya tenía responsable, es una reasignación.
+            es_reasignacion = ticket.responsable_id is not None
+
+            ticket.responsable = responsable
+            # Solo cambia de estado si estaba "Abierto"; si ya estaba
+            # "En gestion" se queda igual.
+            ticket.estado = EstadoChoices.EN_GESTION
+            ticket.save(update_fields=["responsable", "estado", "fecha_actualizacion"])
+
+            TicketItem.objects.create(
+                ticket=ticket,
+                actor=request.user,
+                tipo_accion=TipoAccionChoices.ASIGNACION,
+                estado_anterior=estado_anterior,
+                estado_nuevo=ticket.estado,
+                responsable_asignado=responsable,
+                es_interna=False,
+                observaciones=(
+                    "Ticket reasignado a otro responsable."
+                    if es_reasignacion
+                    else "Ticket asignado a un responsable para su atención."
+                ),
             )
 
         return respuesta_detalle_soporte(ticket.pk)
