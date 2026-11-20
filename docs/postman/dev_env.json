@@ -1,0 +1,63 @@
+{
+  "id": "60a3c4d2-8e54-4bfc-a39a-27b0f3e19a84",
+  "name": "Tickets Datak - Local Development",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "client_email",
+      "value": "cliente@acme.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "client_password",
+      "value": "test123456",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "module_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "module_name",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "ticket_radicado",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "run_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2026-11-19T00:00:00.000Z",
+  "_postman_exported_using": "Postman/11"
+}
