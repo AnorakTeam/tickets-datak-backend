@@ -1,0 +1,324 @@
+{
+  "info": {
+    "_postman_id": "4b9eb6a6-438a-4ea6-9d73-80c31f1e1701",
+    "name": "Tickets Datak API - Iteration 1",
+    "description": "End-to-end smoke tests for the Iteration 1 client API. Run in order against a migrated local database seeded with `python manage.py seed_data`. Configure `docs/postman/dev_env.json` or select an equivalent Postman environment. The environment uses only the local development account documented by the seed_data command.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const required = ['base_url', 'client_email', 'client_password'];",
+          "for (const name of required) {",
+          "  if (!pm.environment.get(name)) {",
+          "    throw new Error(`Set the '${name}' variable in the selected Postman environment.`);",
+          "  }",
+          "}",
+          "if (!pm.environment.get('run_id')) {",
+          "  pm.environment.set('run_id', `${Date.now()}`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Login (JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/auth/token/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"{{client_email}}\",\n  \"password\": \"{{client_password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "Obtain access and refresh JWTs with the seeded local client account."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Login response matches the JWT schema', function () {",
+              "  pm.expect(body).to.be.an('object');",
+              "  pm.expect(body.access).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.refresh).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.user).to.be.an('object');",
+              "  pm.expect(body.user.correo).to.eql(pm.environment.get('client_email'));",
+              "  pm.expect(body.user.rol).to.eql('cliente');",
+              "});",
+              "pm.environment.set('access_token', body.access);",
+              "pm.environment.set('refresh_token', body.refresh);",
+              "pm.environment.set('run_id', `${Date.now()}`);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get contracted modules",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/modulos/",
+        "description": "List active modules for the authenticated client company and select one for ticket creation."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Modules returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const modules = pm.response.json();",
+              "pm.test('Modules response is a non-empty array with the documented fields', function () {",
+              "  pm.expect(modules).to.be.an('array').that.is.not.empty;",
+              "  modules.forEach(function (module) {",
+              "    pm.expect(module).to.be.an('object');",
+              "    pm.expect(module.id).to.be.a('number');",
+              "    pm.expect(module.codigo).to.be.a('string').and.not.empty;",
+              "    pm.expect(module.nombre).to.be.a('string').and.not.empty;",
+              "  });",
+              "});",
+              "pm.environment.set('module_id', modules[0].id);",
+              "pm.environment.set('module_name', modules[0].nombre);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Create client ticket",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/client/tickets/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"modulo_id\": {{module_id}},\n  \"pestana_o_documento\": \"Postman Iteration 1\",\n  \"asunto\": \"Postman Iteration 1 run {{run_id}}\",\n  \"descripcion\": \"Automated API collection verification ticket.\",\n  \"mensaje_error\": \"Generated by the local Postman collection.\",\n  \"prioridad\": \"Media\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Create a client ticket using the first active module returned by the preceding request. The created radicado is reused by the list and detail checks."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Ticket creation returns HTTP 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Ticket creation response matches the documented schema', function () {",
+              "  pm.expect(body).to.be.an('object');",
+              "  pm.expect(body.id).to.be.a('number');",
+              "  pm.expect(body.radicado).to.match(/^TK-\\d{4}-\\d{6}$/);",
+              "  pm.expect(body.estado).to.eql('Abierto');",
+              "  pm.expect(body.prioridad).to.eql('Media');",
+              "  pm.expect(body.canal_origen).to.eql('Portal');",
+              "  pm.expect(body.asunto).to.include('Postman Iteration 1');",
+              "  pm.expect(body.fecha_creacion).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.modulo.id).to.eql(Number(pm.environment.get('module_id')));",
+              "  pm.expect(body.modulo.nombre).to.eql(pm.environment.get('module_name'));",
+              "  pm.expect(body.mensaje).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.environment.set('ticket_radicado', body.radicado);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Get client tickets",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/client/tickets/",
+        "description": "Verify the created ticket appears in the authenticated client's paginated list."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Ticket list returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Ticket list matches the documented pagination and row schema', function () {",
+              "  pm.expect(body).to.be.an('object');",
+              "  pm.expect(body.count).to.be.a('number');",
+              "  pm.expect(body.total_pages).to.be.a('number');",
+              "  pm.expect(body.results).to.be.an('array');",
+              "  pm.expect(body.next === null || typeof body.next === 'string').to.eql(true);",
+              "  pm.expect(body.previous === null || typeof body.previous === 'string').to.eql(true);",
+              "  const ticket = body.results.find(function (row) { return row.radicado === pm.environment.get('ticket_radicado'); });",
+              "  pm.expect(ticket, 'created ticket is present in results').to.be.an('object');",
+              "  pm.expect(ticket.asunto).to.be.a('string');",
+              "  pm.expect(ticket.modulo_nombre).to.be.a('string');",
+              "  pm.expect(ticket.prioridad).to.be.a('string');",
+              "  pm.expect(ticket.estado).to.be.a('string');",
+              "  pm.expect(ticket.fecha_creacion).to.be.a('string');",
+              "  pm.expect(ticket).not.to.have.property('responsable');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Get client ticket detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/client/tickets/{{ticket_radicado}}/",
+        "description": "Verify the created ticket detail and ensure no internal management fields are exposed."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Ticket detail returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Ticket detail matches the client-safe schema', function () {",
+              "  pm.expect(body).to.be.an('object');",
+              "  pm.expect(body.radicado).to.eql(pm.environment.get('ticket_radicado'));",
+              "  ['estado', 'prioridad', 'asunto', 'descripcion', 'modulo_nombre', 'pestana_o_documento', 'mensaje_error', 'canal_origen', 'fecha_creacion', 'fecha_actualizacion', 'comentario_solucion', 'motivo_no_procedente'].forEach(function (key) {",
+              "    pm.expect(body).to.have.property(key);",
+              "  });",
+              "  pm.expect(body.historial).to.be.an('array');",
+              "  body.historial.forEach(function (item) {",
+              "    pm.expect(item.tipo_accion).to.be.a('string');",
+              "    pm.expect(item.observaciones).to.be.a('string');",
+              "    pm.expect(item.fecha_creacion).to.be.a('string');",
+              "    pm.expect(item).not.to.have.any.keys('actor', 'responsable_asignado', 'es_interna');",
+              "  });",
+              "  pm.expect(body).not.to.have.any.keys('responsable', 'registrado_por_agente', 'creado_por', 'clasificacion');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Send chatbot message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/chatbot/mensajes/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mensaje\": \"estado de mis tickets\",\n  \"session_id\": \"postman-{{run_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Ask for active ticket status and verify the chatbot response contract."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Chatbot returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Chatbot response matches the documented schema', function () {",
+              "  pm.expect(body).to.be.an('object');",
+              "  pm.expect(body.session_id).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.tipo_respuesta).to.be.oneOf(['PREGUNTA', 'RESUMEN', 'TICKET_CREADO', 'ESTADO_TICKET', 'INFO', 'ERROR']);",
+              "  pm.expect(body.mensaje).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.estado_actual).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.campos_recolectados).to.be.an('object');",
+              "  if (body.radicado !== undefined) {",
+              "    pm.expect(body.radicado === null || typeof body.radicado === 'string').to.eql(true);",
+              "  }",
+              "  if (body.opciones !== undefined) { pm.expect(body.opciones).to.be.an('array'); }",
+              "  pm.expect(body.mensaje).to.include(pm.environment.get('ticket_radicado'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "run_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

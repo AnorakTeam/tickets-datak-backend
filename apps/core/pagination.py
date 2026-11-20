@@ -34,3 +34,9 @@ class StandardResultsPagination(PageNumberPagination):
                 "results": data,
             }
         )
+
+
+class SupportInboxPagination(StandardResultsPagination):
+    """Paginación explícita de 20 resultados por página para la bandeja unificada de soporte (BE-19, RF7)."""
+
+    page_size = 20
