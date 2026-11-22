@@ -55,6 +55,66 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "support_agent_email",
+      "value": "agente@datak.co",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "support_agent_password",
+      "value": "test123456",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "engineer_email",
+      "value": "responsable@datak.co",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "engineer_password",
+      "value": "test123456",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "support_token",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "engineer_token",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "target_empresa_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "ticket_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "assigned_engineer_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "notification_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment",
