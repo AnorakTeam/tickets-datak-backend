@@ -3,6 +3,8 @@
 from django.urls import path
 
 from apps.tickets.views import (
+    ClientNotificationListView,
+    ClientNotificationMarkReadView,
     ClientTicketDetailView,
     ClientTicketListView,
     SupportEngineerQueueView,
@@ -18,6 +20,18 @@ from apps.tickets.views import (
 from apps.tickets.views_chatbot import ChatbotMensajesView
 
 urlpatterns = [
+    # GET /api/v1/client/notificaciones/ — bandeja de notificaciones del cliente (BE-25, RF16).
+    path(
+        "client/notificaciones/",
+        ClientNotificationListView.as_view(),
+        name="client-notification-list",
+    ),
+    # PATCH /api/v1/client/notificaciones/{id}/leida/ — marcar notificación como leída (BE-25, RF16).
+    path(
+        "client/notificaciones/<int:pk>/leida/",
+        ClientNotificationMarkReadView.as_view(),
+        name="client-notification-mark-read",
+    ),
     # GET y POST /api/v1/client/tickets/ — "Mis tickets" (BE-12) y creación (BE-11).
     path("client/tickets/", ClientTicketListView.as_view(), name="client-ticket-list"),
     # GET /api/v1/client/tickets/TK-2026-000001/ — detalle de un ticket para el cliente (BE-13).

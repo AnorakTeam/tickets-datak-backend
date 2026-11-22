@@ -13,6 +13,7 @@ from apps.tickets.models import (
     PrioridadChoices,
     Ticket,
     TicketItem,
+    TicketNotificacion,
 )
 
 
@@ -554,4 +555,47 @@ class SupportTicketResolveSerializer(serializers.Serializer):
         if not texto:
             raise serializers.ValidationError("El comentario de solución es obligatorio.")
         return texto
+
+
+class ClientNotificationTicketSerializer(serializers.ModelSerializer):
+    """Datos mínimos del ticket asociado a la notificación."""
+
+    class Meta:
+        model = Ticket
+        fields = ["id", "radicado", "asunto"]
+        read_only_fields = fields
+
+
+class ClientNotificationSerializer(serializers.ModelSerializer):
+    """Serializer para la bandeja de notificaciones del portal del cliente (BE-25, RF16)."""
+
+    ticket_radicado = serializers.CharField(source="ticket.radicado", read_only=True, default=None)
+    radicado = serializers.CharField(source="ticket.radicado", read_only=True, default=None)
+    ticket = ClientNotificationTicketSerializer(read_only=True)
+    tipo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketNotificacion
+        fields = [
+            "id",
+            "titulo",
+            "mensaje",
+            "estado_nuevo",
+            "leida",
+            "fecha_creacion",
+            "ticket_radicado",
+            "radicado",
+            "ticket",
+            "tipo",
+        ]
+        read_only_fields = fields
+
+    def get_tipo(self, obj: TicketNotificacion) -> str:
+        estado = (obj.estado_nuevo or "").lower()
+        if "resuelto" in estado:
+            return "resolucion"
+        if "procedente" in estado:
+            return "no_procedente"
+        return "actualizacion"
+
 
