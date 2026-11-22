@@ -30,6 +30,7 @@ from apps.tickets.models import (
     PrioridadChoices,
     Ticket,
     TicketItem,
+    TicketNotificacion,
     TipoAccionChoices,
 )
 
@@ -146,9 +147,133 @@ class TicketEmailService:
             )
             return False
 
+    CLOSED_SUBJECT_TEMPLATE = "[Datak Soporte] {titulo}"
+    CLOSED_TXT_TEMPLATE = "tickets/emails/ticket_closed.txt"
+    CLOSED_HTML_TEMPLATE = "tickets/emails/ticket_closed.html"
+
+    @classmethod
+    def send_ticket_closed_notification(
+        cls, ticket: Ticket, notificacion: TicketNotificacion | None = None
+    ) -> bool:
+        """Envía correo informativo de resolución o no procedencia al creador del ticket.
+
+        Captura cualquier fallo para no interrumpir el flujo transaccional.
+        """
+        try:
+            destinatario = ticket.creado_por
+            if not destinatario or not destinatario.correo:
+                return False
+
+            fecha_resolucion = (
+                timezone.localtime(ticket.fecha_resolucion)
+                if ticket.fecha_resolucion and timezone.is_aware(ticket.fecha_resolucion)
+                else (ticket.fecha_resolucion or timezone.now())
+            )
+            fecha_formateada = fecha_resolucion.strftime("%Y-%m-%d %H:%M:%S")
+
+            es_resuelto = ticket.estado == EstadoChoices.RESUELTO
+            titulo = (
+                notificacion.titulo
+                if notificacion
+                else f"Ticket {ticket.get_estado_display()}: {ticket.radicado}"
+            )
+
+            contexto = {
+                "ticket": ticket,
+                "notificacion": notificacion,
+                "radicado": ticket.radicado,
+                "modulo": ticket.modulo.nombre if ticket.modulo else "N/A",
+                "asunto": ticket.asunto,
+                "estado": ticket.get_estado_display(),
+                "es_resuelto": es_resuelto,
+                "comentario_solucion": ticket.comentario_solucion or "",
+                "motivo_no_procedente": ticket.motivo_no_procedente or "",
+                "fecha_resolucion": fecha_formateada,
+                "destinatario_nombre": destinatario.nombre,
+                "empresa_nombre": ticket.empresa.nombre,
+                "titulo": titulo,
+            }
+
+            cuerpo_texto = render_to_string(cls.CLOSED_TXT_TEMPLATE, contexto)
+            cuerpo_html = render_to_string(cls.CLOSED_HTML_TEMPLATE, contexto)
+            asunto_correo = cls.CLOSED_SUBJECT_TEMPLATE.format(titulo=titulo)
+
+            mensaje = EmailMultiAlternatives(
+                subject=asunto_correo,
+                body=cuerpo_texto,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[destinatario.correo],
+            )
+            mensaje.attach_alternative(cuerpo_html, "text/html")
+            mensaje.send(fail_silently=False)
+            return True
+        except Exception:
+            logger.exception(
+                "Error al enviar notificación de cierre de ticket por correo para %s",
+                getattr(ticket, "radicado", "desconocido"),
+            )
+            return False
+
 
 # Alias para compatibilidad con distintos nombres de importación.
 EmailDispatcherService = TicketEmailService
+
+
+class NotificationService:
+    """Servicio de dominio para generación de notificaciones internas y por correo (BE-23, RF16).
+
+    Crea registros en el modelo `TicketNotificacion` para el creador del ticket cuando este
+    pasa a un estado de cierre ('Resuelto' o 'No procedente'), y dispara el correo transaccional
+    informativo de forma desacoplada y segura.
+    """
+
+    @classmethod
+    def notify_ticket_closed(cls, ticket: Ticket) -> TicketNotificacion | None:
+        """Crea la notificación para el usuario creador y despacha el correo transaccional.
+
+        Si el ticket no tiene usuario creador (creado_por es None), registra advertencia y omite.
+        Cualquier error de correo no afecta la persistencia de la notificación.
+        """
+        try:
+            destinatario = getattr(ticket, "creado_por", None)
+        except Exception:
+            destinatario = None
+
+        if destinatario is None:
+            logger.warning(
+                "No se puede notificar el cierre del ticket %s: creado_por es None.",
+                getattr(ticket, "radicado", "desconocido"),
+            )
+            return None
+
+        es_resuelto = ticket.estado == EstadoChoices.RESUELTO
+        if es_resuelto:
+            titulo = f"Ticket Resuelto: {ticket.radicado}"
+            mensaje = (
+                f"Su ticket '{ticket.asunto}' ha sido resuelto. "
+                f"Solución: {ticket.comentario_solucion or 'No especificada.'}"
+            )
+        else:
+            titulo = f"Ticket No Procedente: {ticket.radicado}"
+            mensaje = (
+                f"Su ticket '{ticket.asunto}' fue marcado como no procedente. "
+                f"Motivo: {ticket.motivo_no_procedente or 'No especificado.'}"
+            )
+
+        notificacion = TicketNotificacion.objects.create(
+            destinatario=destinatario,
+            empresa=ticket.empresa,
+            ticket=ticket,
+            titulo=titulo,
+            mensaje=mensaje,
+            estado_nuevo=ticket.estado,
+            leida=False,
+        )
+
+        # Despachar correo transaccional de forma segura
+        TicketEmailService.send_ticket_closed_notification(ticket, notificacion)
+
+        return notificacion
 
 
 class TicketCreationService:

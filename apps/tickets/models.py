@@ -399,3 +399,66 @@ class TicketItem(models.Model):
     def __str__(self) -> str:
         """Ejemplo: "TK-2026-000001 · CREACION"."""
         return f"{self.ticket.radicado} · {self.tipo_accion}"
+
+
+class TicketNotificacion(models.Model):
+    """Notificación en el portal para el cliente ante cierre o resolución de tickets (BE-23, RF16).
+
+    Tiene EXACTAMENTE 9 campos lógicos (sección 3.6 de ARCHITECTURE_AND_DATA_MODEL_REFERENCE.md).
+    Registra avisos dirigidos al usuario creador del ticket cuando este cambia de estado
+    a 'Resuelto' o 'No procedente'.
+    """
+
+    # 1. id: BigAutoField implícito (DEFAULT_AUTO_FIELD)
+
+    # 2. Usuario cliente destinatario de la notificación.
+    destinatario = models.ForeignKey(
+        Usuario,
+        verbose_name="destinatario",
+        on_delete=models.CASCADE,
+        related_name="notificaciones",
+    )
+
+    # 3. Empresa dueña del ticket y del cliente (aislamiento multi-inquilino RNF2).
+    empresa = models.ForeignKey(
+        Empresa,
+        verbose_name="empresa",
+        on_delete=models.CASCADE,
+        related_name="notificaciones",
+    )
+
+    # 4. Ticket al que hace referencia la notificación.
+    ticket = models.ForeignKey(
+        Ticket,
+        verbose_name="ticket",
+        on_delete=models.CASCADE,
+        related_name="notificaciones",
+    )
+
+    # 5. Título corto del aviso (ej: "Ticket Resuelto: TK-2026-000012").
+    titulo = models.CharField("título", max_length=255)
+
+    # 6. Contenido descriptivo del aviso (solución o motivo de desestimación).
+    mensaje = models.TextField("mensaje")
+
+    # 7. Nuevo estado que motivó la notificación ('Resuelto' o 'No procedente').
+    estado_nuevo = models.CharField(
+        "estado nuevo",
+        max_length=30,
+        choices=EstadoChoices.choices,
+    )
+
+    # 8. Bandera que indica si el cliente ya visualizó/marcó como leída la notificación.
+    leida = models.BooleanField("leída", default=False)
+
+    # 9. Momento en el que se generó la notificación en el sistema.
+    fecha_creacion = models.DateTimeField("fecha de creación", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "notificación de ticket"
+        verbose_name_plural = "notificaciones de tickets"
+        ordering = ["-fecha_creacion", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.ticket.radicado} · {self.titulo} · {'Leída' if self.leida else 'No leída'}"
+
