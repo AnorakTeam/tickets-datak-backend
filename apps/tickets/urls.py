@@ -12,6 +12,7 @@ from apps.tickets.views import (
     SupportTicketDismissView,
     SupportTicketInboxView,
 )
+from apps.tickets.views_chatbot import ChatbotMensajesView
 
 urlpatterns = [
     # GET y POST /api/v1/client/tickets/ — "Mis tickets" (BE-12) y creación (BE-11).
@@ -54,4 +55,6 @@ urlpatterns = [
         SupportResponsablesView.as_view(),
         name="support-responsables",
     ),
+    # POST /api/v1/chatbot/mensajes/ — chatbot messaging endpoint (BE-15, RF3, RF6).
+    path("chatbot/mensajes/", ChatbotMensajesView.as_view(), name="chatbot-mensajes"),
 ]
