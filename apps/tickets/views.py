@@ -43,6 +43,8 @@ from apps.tickets.serializers import (
     SupportTicketDetailSerializer,
     SupportTicketDismissSerializer,
     SupportTicketInboxSerializer,
+    SupportInternalNoteSerializer,
+    SupportTicketResolveSerializer,
 )
 from apps.tickets.services import NotificationService, TicketCreationService
 
@@ -632,3 +634,147 @@ class SupportTicketAssignView(APIView):
             )
 
         return respuesta_detalle_soporte(ticket.pk)
+
+
+class SupportEngineerQueueView(generics.ListAPIView):
+    """`GET /api/v1/support/mis-tickets/` — Cola de tickets asignados al ingeniero autenticado (BE-24, RF13).
+
+    - Solo personal interno (`IsAuthenticated` + `IsInternalSupportUser`).
+    - Filtra estrictamente por `responsable=request.user`.
+    - Soporta filtro opcional `?estado=` ('En gestion', 'Resuelto', etc.).
+    - Ordena por estado activo primero ('En gestion', 'Abierto') y luego por `-fecha_creacion`.
+    - Utiliza paginación `SupportInboxPagination` (20 por página) y `SupportTicketInboxSerializer`.
+    """
+
+    serializer_class = SupportTicketInboxSerializer
+    permission_classes = [IsAuthenticated, IsInternalSupportUser]
+    pagination_class = SupportInboxPagination
+
+    def get_queryset(self):
+        queryset = Ticket.objects.filter(responsable=self.request.user).select_related(
+            "empresa",
+            "modulo",
+            "creado_por",
+            "responsable",
+        )
+        estado = self.request.query_params.get("estado")
+        if estado:
+            if estado not in EstadoChoices.values:
+                opciones = ", ".join(EstadoChoices.values)
+                raise ValidationError({"estado": [f"Estado no válido. Opciones: {opciones}."]})
+            queryset = queryset.filter(estado=estado)
+
+        return queryset.annotate(
+            is_cerrado=Case(
+                When(
+                    estado__in=[EstadoChoices.RESUELTO, EstadoChoices.NO_PROCEDENTE],
+                    then=Value(1),
+                ),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        ).order_by("is_cerrado", "-fecha_creacion", "-id")
+
+
+class SupportTicketInternalNoteView(APIView):
+    """`POST /api/v1/support/tickets/{id}/notas-internas/` — Registrar nota interna en el historial (BE-24, RF14).
+
+    - Accesible para personal interno (`IsAuthenticated` + `IsInternalSupportUser`).
+    - Requiere `observaciones` no vacío (400 si falta o son espacios en blanco).
+    - Un ticket cerrado ('Resuelto' o 'No procedente') no admite notas internas (responde 400).
+    - Registra un nuevo evento `TicketItem(tipo_accion='NOTA_INTERNA', es_interna=True, actor=request.user)`.
+    - `es_interna=True` garantiza que la nota nunca llegue al portal del cliente (RNF2).
+    - Devuelve el detalle actualizado del ticket (201 Created).
+    """
+
+    permission_classes = [IsAuthenticated, IsInternalSupportUser]
+    ESTADOS_CERRADOS = (EstadoChoices.RESUELTO, EstadoChoices.NO_PROCEDENTE)
+
+    def post(self, request, lookup):
+        serializer = SupportInternalNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        observaciones = serializer.validated_data["observaciones"]
+
+        with transaction.atomic():
+            ticket = obtener_ticket_para_actualizar(lookup)
+
+            if ticket.estado in self.ESTADOS_CERRADOS:
+                mensaje = (
+                    f"No se pueden agregar notas internas a un ticket en estado "
+                    f"{ticket.get_estado_display()}."
+                )
+                raise ValidationError({"detail": mensaje, "estado": [mensaje]})
+
+            ticket.save(update_fields=["fecha_actualizacion"])
+
+            TicketItem.objects.create(
+                ticket=ticket,
+                actor=request.user,
+                tipo_accion=TipoAccionChoices.NOTA_INTERNA,
+                estado_anterior=ticket.estado,
+                estado_nuevo=ticket.estado,
+                es_interna=True,
+                observaciones=observaciones,
+            )
+
+        return respuesta_detalle_soporte(ticket.pk, codigo_estado=status.HTTP_201_CREATED)
+
+
+class SupportTicketResolveView(APIView):
+    """`POST /api/v1/support/tickets/{id}/resolver/` — Resolver y cerrar una incidencia (BE-24, RF15).
+
+    - Accesible para personal interno (`IsAuthenticated` + `IsInternalSupportUser`).
+    - Requiere `comentario_solucion` obligatorio (400 si falta o son solo espacios en blanco).
+    - Solo aplicable desde 'Abierto' o 'En gestion'. Si ya está cerrado responde 400.
+    - Cambia estado a 'Resuelto', fija `fecha_resolucion=timezone.now()` y `comentario_solucion`.
+    - Registra un evento `TicketItem(tipo_accion='RESOLUCION', es_interna=False)` visible para el cliente.
+    - Notifica al cliente en el portal y por correo transaccional vía `NotificationService` (BE-23, RF16).
+    - Devuelve el detalle actualizado del ticket (200 OK).
+    """
+
+    permission_classes = [IsAuthenticated, IsInternalSupportUser]
+    ESTADOS_CERRADOS = (EstadoChoices.RESUELTO, EstadoChoices.NO_PROCEDENTE)
+
+    def post(self, request, lookup):
+        serializer = SupportTicketResolveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comentario_solucion = serializer.validated_data["comentario_solucion"]
+
+        with transaction.atomic():
+            ticket = obtener_ticket_para_actualizar(lookup)
+
+            if ticket.estado in self.ESTADOS_CERRADOS:
+                mensaje = (
+                    f"No se puede resolver un ticket en estado "
+                    f"{ticket.get_estado_display()}."
+                )
+                raise ValidationError({"detail": mensaje, "estado": [mensaje]})
+
+            estado_anterior = ticket.estado
+            ticket.estado = EstadoChoices.RESUELTO
+            ticket.comentario_solucion = comentario_solucion
+            ticket.fecha_resolucion = timezone.now()
+            ticket.save(
+                update_fields=[
+                    "estado",
+                    "comentario_solucion",
+                    "fecha_resolucion",
+                    "fecha_actualizacion",
+                ]
+            )
+
+            TicketItem.objects.create(
+                ticket=ticket,
+                actor=request.user,
+                tipo_accion=TipoAccionChoices.RESOLUCION,
+                estado_anterior=estado_anterior,
+                estado_nuevo=EstadoChoices.RESUELTO,
+                es_interna=False,
+                observaciones=comentario_solucion,
+            )
+
+            # Notificar al cliente creador en portal y correo (BE-23, RF16)
+            NotificationService.notify_ticket_closed(ticket)
+
+        return respuesta_detalle_soporte(ticket.pk, codigo_estado=status.HTTP_200_OK)
+
