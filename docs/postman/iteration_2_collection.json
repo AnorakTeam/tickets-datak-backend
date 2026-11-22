@@ -1,0 +1,481 @@
+{
+  "info": {
+    "_postman_id": "7c8e9fa1-523b-4fa7-8e62-90d42e2f2802",
+    "name": "Tickets Datak API - Iteration 2",
+    "description": "End-to-end integration and smoke tests for Iteration 2 Internal Support Console & Notifications API (RF7–RF16, BE-26). Covers external creation, unified inbox, detail, classification, staff assignment, engineer queue, private internal notes, resolution, client in-portal notifications, and dismissal.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Login Support Agent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/auth/token/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"{{support_agent_email}}\",\n  \"password\": \"{{support_agent_password}}\"\n}"
+        },
+        "description": "Authenticate as internal support agent to access /api/v1/support/** endpoints."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Support agent login returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.access).to.be.a('string');",
+              "  pm.environment.set('support_token', data.access);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get Active Companies (RF7/RF9)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/empresas/",
+        "description": "List active client companies for support filtering and external ticket creation."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Returns HTTP 200 with company list', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data).to.be.an('array');",
+              "  if (data.length > 0) {",
+              "    pm.environment.set('target_empresa_id', data[0].id);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. External Ticket Registration via WhatsApp (RF9)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"empresa_id\": {{target_empresa_id}},\n  \"modulo_id\": {{module_id}},\n  \"canal_origen\": \"WhatsApp\",\n  \"asunto\": \"Postman E2E Test - Incidencia Externa\",\n  \"descripcion\": \"Incidencia reportada por el cliente vía WhatsApp para pruebas de integración Postman.\",\n  \"prioridad\": \"Media\",\n  \"pestana_o_documento\": \"Facturación\",\n  \"mensaje_error_tecnico\": \"Error 500 al emitir documento\"\n}"
+        },
+        "description": "Support agent creates a ticket on behalf of client with WhatsApp origin."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('External ticket creation returns 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.radicado).to.be.a('string');",
+              "  pm.environment.set('ticket_id', data.id);",
+              "  pm.environment.set('ticket_radicado', data.radicado);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Unified Support Inbox (RF7)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/?estado=Abierto",
+        "description": "List tickets across all companies with multi-tenant filtering."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Unified inbox returns 200 with pagination', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.results).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Support Ticket Detail & Audit History (RF8)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/{{ticket_radicado}}/",
+        "description": "Support agent views complete ticket details and full TicketItem audit history."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Support detail returns 200 with audit history', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.radicado).to.eql(pm.environment.get('ticket_radicado'));",
+              "  pm.expect(data.historial).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Classify Ticket (RF10)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/{{ticket_id}}/clasificar/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clasificacion\": \"Bug\",\n  \"prioridad\": \"Alta\"\n}"
+        },
+        "description": "Update ticket classification and priority."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Classification returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.clasificacion).to.eql('Bug');",
+              "  pm.expect(data.prioridad).to.eql('Alta');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Get Available Support Responsables (RF11)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/responsables/",
+        "description": "List staff available for ticket assignment."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Responsables catalog returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data).to.be.an('array');",
+              "  if (data.length > 0) {",
+              "    pm.environment.set('assigned_engineer_id', data[0].id);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Assign Ticket to Engineer (RF11)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{support_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/{{ticket_id}}/asignar/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"responsable_id\": {{assigned_engineer_id}}\n}"
+        },
+        "description": "Assign ticket to engineer and transition state to En gestion."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Assignment returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.estado).to.eql('En gestion');",
+              "  pm.expect(data.responsable).to.be.an('object');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Login Assigned Engineer",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/auth/token/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"{{engineer_email}}\",\n  \"password\": \"{{engineer_password}}\"\n}"
+        },
+        "description": "Authenticate as the assigned engineer."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Engineer login returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.environment.set('engineer_token', data.access);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Engineer Queue - Mis Tickets (RF13)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{engineer_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/mis-tickets/?estado=En gestion",
+        "description": "Fetch tickets assigned exclusively to the authenticated engineer."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Engineer queue returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.results).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Add Private Internal Note (RF14)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{engineer_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/{{ticket_id}}/notas-internas/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"observaciones\": \"Nota interna de diagnóstico técnico registrada por el ingeniero asignado.\"\n}"
+        },
+        "description": "Engineer adds internal note invisible to client portal."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Internal note creation returns 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.historial).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Resolve Ticket (RF15)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{engineer_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/support/tickets/{{ticket_id}}/resolver/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comentario_solucion\": \"Incidencia resuelta satisfactoriamente. Se desplegó parche correctivo.\"\n}"
+        },
+        "description": "Resolve ticket, transition to Resuelto, and trigger client notifications."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Ticket resolution returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.estado).to.eql('Resuelto');",
+              "  pm.expect(data.comentario_solucion).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Client In-Portal Notifications Feed (RF16)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/client/notificaciones/",
+        "description": "Client fetches scoped notifications and unread counter."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Client notifications feed returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.unread_count).to.be.a('number');",
+              "  pm.expect(data.notificaciones).to.be.an('array');",
+              "  if (data.notificaciones.length > 0) {",
+              "    pm.environment.set('notification_id', data.notificaciones[0].id);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Mark Notification as Read (RF16)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/client/notificaciones/{{notification_id}}/leida/",
+        "description": "Client marks in-portal notification as read."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Mark as read returns 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.leida).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
