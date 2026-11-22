@@ -5,12 +5,15 @@ from django.urls import path
 from apps.tickets.views import (
     ClientTicketDetailView,
     ClientTicketListView,
+    SupportEngineerQueueView,
     SupportResponsablesView,
     SupportTicketAssignView,
     SupportTicketClassifyView,
     SupportTicketDetailView,
     SupportTicketDismissView,
     SupportTicketInboxView,
+    SupportTicketInternalNoteView,
+    SupportTicketResolveView,
 )
 from apps.tickets.views_chatbot import ChatbotMensajesView
 
@@ -23,6 +26,12 @@ urlpatterns = [
         ClientTicketDetailView.as_view(),
         name="client-ticket-detail",
     ),
+    # GET /api/v1/support/mis-tickets/ — cola de tickets asignados al ingeniero (BE-24, RF13).
+    path(
+        "support/mis-tickets/",
+        SupportEngineerQueueView.as_view(),
+        name="support-engineer-queue",
+    ),
     # GET y POST /api/v1/support/tickets/ — bandeja unificada (BE-19 RF7) y creación externa (BE-20 RF9).
     path("support/tickets/", SupportTicketInboxView.as_view(), name="support-ticket-inbox"),
     # GET /api/v1/support/tickets/{id}/ — detalle completo por id o radicado (BE-20 RF8).
@@ -30,6 +39,18 @@ urlpatterns = [
         "support/tickets/<str:lookup>/",
         SupportTicketDetailView.as_view(),
         name="support-ticket-detail",
+    ),
+    # POST /api/v1/support/tickets/{id}/notas-internas/ — agregar nota interna (BE-24, RF14).
+    path(
+        "support/tickets/<str:lookup>/notas-internas/",
+        SupportTicketInternalNoteView.as_view(),
+        name="support-ticket-internal-note",
+    ),
+    # POST /api/v1/support/tickets/{id}/resolver/ — resolver ticket con comentario (BE-24, RF15).
+    path(
+        "support/tickets/<str:lookup>/resolver/",
+        SupportTicketResolveView.as_view(),
+        name="support-ticket-resolve",
     ),
     # PATCH /api/v1/support/tickets/{id}/clasificar/ — clasificación y prioridad (BE-21, RF10).
     path(

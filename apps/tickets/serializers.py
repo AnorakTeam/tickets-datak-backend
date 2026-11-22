@@ -510,3 +510,48 @@ class SupportTicketAssignSerializer(serializers.Serializer):
         if not responsable.activo:
             raise serializers.ValidationError("El responsable indicado está inactivo.")
         return responsable
+
+
+class SupportInternalNoteSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/v1/support/tickets/{id}/notas-internas/` (BE-24, RF14).
+
+    `observaciones` no puede estar vacío ni contener solo espacios en blanco.
+    """
+
+    observaciones = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "required": "La nota interna no puede estar vacía.",
+            "blank": "La nota interna no puede estar vacía.",
+        },
+    )
+
+    def validate_observaciones(self, valor: str) -> str:
+        texto = valor.strip()
+        if not texto:
+            raise serializers.ValidationError("La nota interna no puede estar vacía.")
+        return texto
+
+
+class SupportTicketResolveSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/v1/support/tickets/{id}/resolver/` (BE-24, RF15).
+
+    `comentario_solucion` es obligatorio para cerrar la incidencia y orientar al cliente.
+    """
+
+    comentario_solucion = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "required": "El comentario de solución es obligatorio.",
+            "blank": "El comentario de solución es obligatorio.",
+        },
+    )
+
+    def validate_comentario_solucion(self, valor: str) -> str:
+        texto = valor.strip()
+        if not texto:
+            raise serializers.ValidationError("El comentario de solución es obligatorio.")
+        return texto
+
