@@ -1,6 +1,7 @@
 """Django settings for tickets-datak-backend project."""
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -113,6 +114,12 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
+
+# Optimización para suite de pruebas y SQLite en memoria (BE-27 QA performance)
+if os.environ.get("USE_SQLITE") == "True" or "pytest" in sys.modules:
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher",
+    ]
 
 # Internationalization
 LANGUAGE_CODE = "es-co"
