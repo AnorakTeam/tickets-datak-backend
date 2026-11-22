@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ titulo }}</title>
+</head>
+<body style="margin: 0; padding: 24px; background-color: #f4f6f9; font-family: Arial, Helvetica, sans-serif; color: #1f2937;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+    <tr>
+      <td style="background-color: {% if es_resuelto %}#047857{% else %}#b91c1c{% endif %}; color: #ffffff; padding: 20px 24px;">
+        <h1 style="margin: 0; font-size: 20px; font-weight: bold;">Soporte Técnico Datak.co</h1>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #d1fae5;">Notificación de cierre de incidencia</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 24px;">
+        <p style="margin: 0 0 16px 0; font-size: 15px;">Hola <strong>{{ destinatario_nombre }}</strong>,</p>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #374151;">
+          Le informamos que su solicitud de soporte para <strong>{{ empresa_nombre }}</strong> ha sido cerrada.
+        </p>
+
+        <div style="background-color: {% if es_resuelto %}#ecfdf5; border-left: 4px solid #10b981;{% else %}#fef2f2; border-left: 4px solid #ef4444;{% endif %} padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+          <span style="font-size: 12px; text-transform: uppercase; color: {% if es_resuelto %}#047857{% else %}#b91c1c{% endif %}; font-weight: bold;">Radicado: {{ radicado }}</span>
+          <div style="font-size: 18px; font-weight: bold; color: #111827; margin-top: 4px;">Estado: {{ estado }}</div>
+        </div>
+
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="8" style="border-collapse: collapse; font-size: 14px;">
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563; width: 35%;">Módulo:</td>
+            <td style="color: #111827;">{{ modulo }}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563;">Asunto:</td>
+            <td style="color: #111827;">{{ asunto }}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563;">Fecha de resolución:</td>
+            <td style="color: #111827;">{{ fecha_resolucion }}</td>
+          </tr>
+        </table>
+
+        <div style="margin-top: 20px; padding: 16px; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+          <h3 style="margin: 0 0 8px 0; font-size: 14px; color: #374151;">
+            {% if es_resuelto %}Detalle de la Solución:{% else %}Motivo de No Procedencia:{% endif %}
+          </h3>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #1f2937; white-space: pre-wrap;">{% if es_resuelto %}{{ comentario_solucion }}{% else %}{{ motivo_no_procedente }}{% endif %}</p>
+        </div>
+
+        <p style="margin: 24px 0 0 0; font-size: 13px; color: #6b7280; line-height: 1.4;">
+          Puede consultar el historial y los detalles completos de su caso en cualquier momento ingresando al Portal del Cliente de Datak.co.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="background-color: #f9fafb; padding: 16px 24px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; text-align: center;">
+        Este es un mensaje automático generado por el Sistema de Soporte Datak.co. Por favor no responda a este correo.
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

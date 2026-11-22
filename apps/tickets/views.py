@@ -44,7 +44,7 @@ from apps.tickets.serializers import (
     SupportTicketDismissSerializer,
     SupportTicketInboxSerializer,
 )
-from apps.tickets.services import TicketCreationService
+from apps.tickets.services import NotificationService, TicketCreationService
 
 
 class ClientTicketListView(generics.ListCreateAPIView):
@@ -543,6 +543,9 @@ class SupportTicketDismissView(APIView):
                 es_interna=False,
                 observaciones=motivo,
             )
+
+            # Notificar al cliente en portal y por correo (BE-23, RF16)
+            NotificationService.notify_ticket_closed(ticket)
 
         return respuesta_detalle_soporte(ticket.pk)
 

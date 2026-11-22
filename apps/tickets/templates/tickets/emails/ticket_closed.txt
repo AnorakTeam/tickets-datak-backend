@@ -1,0 +1,26 @@
+Notificación de Cierre de Incidencia — Soporte Datak.co
+======================================================
+
+Hola {{ destinatario_nombre }},
+
+Le informamos que su solicitud de soporte con radicado {{ radicado }} para la empresa {{ empresa_nombre }} ha sido cerrada con estado: {{ estado }}.
+
+Detalle de la incidencia:
+- Radicado: {{ radicado }}
+- Módulo afectado: {{ modulo }}
+- Asunto: {{ asunto }}
+- Estado final: {{ estado }}
+- Fecha de resolución: {{ fecha_resolucion }}
+
+{% if es_resuelto %}
+Comentario de Solución:
+{{ comentario_solucion }}
+{% else %}
+Motivo de no procedencia:
+{{ motivo_no_procedente }}
+{% endif %}
+
+Puede consultar el historial y los detalles completos de su caso en cualquier momento ingresando al Portal del Cliente de Datak.co.
+
+Atentamente,
+Equipo de Soporte Técnico — Datak.co
