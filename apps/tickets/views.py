@@ -28,6 +28,7 @@ from apps.tickets.models import (
     PrioridadChoices,
     Ticket,
     TicketItem,
+    TicketNotificacion,
     TipoAccionChoices,
 )
 from apps.tickets.serializers import (
@@ -45,6 +46,7 @@ from apps.tickets.serializers import (
     SupportTicketInboxSerializer,
     SupportInternalNoteSerializer,
     SupportTicketResolveSerializer,
+    ClientNotificationSerializer,
 )
 from apps.tickets.services import NotificationService, TicketCreationService
 
@@ -172,6 +174,77 @@ class ClientTicketDetailView(generics.RetrieveAPIView):
                 )
             )
         )
+
+
+class ClientNotificationListView(APIView):
+    """`GET /api/v1/client/notificaciones/` — Bandeja de notificaciones del cliente (BE-25, RF16).
+
+    - Solo clientes autenticados (`IsAuthenticated` + `IsClientUser`).
+    - Filtra estrictamente por `destinatario=request.user` y `empresa_id=request.user.empresa_id`.
+    - Ordenado cronológicamente descendente por `fecha_creacion`.
+    - Devuelve `unread_count` con el total de notificaciones no leídas y la lista de notificaciones.
+    """
+
+    permission_classes = [IsAuthenticated, IsClientUser]
+
+    def get(self, request):
+        qs = (
+            TicketNotificacion.objects.filter(
+                destinatario=request.user,
+                empresa_id=request.user.empresa_id,
+            )
+            .select_related("ticket")
+            .order_by("-fecha_creacion", "-id")
+        )
+
+        unread_count = qs.filter(leida=False).count()
+        serializer = ClientNotificationSerializer(qs, many=True)
+
+        return Response(
+            {
+                "unread_count": unread_count,
+                "count": qs.count(),
+                "notificaciones": serializer.data,
+                "results": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ClientNotificationMarkReadView(APIView):
+    """`PATCH /api/v1/client/notificaciones/{id}/leida/` — Marcar notificación como leída (BE-25, RF16).
+
+    - Solo clientes autenticados (`IsAuthenticated` + `IsClientUser`).
+    - Aislamiento multi-tenant estricto: la notificación debe pertenecer a `request.user` y `request.user.empresa`.
+    - Si el ID pertenece a otra empresa o a otro usuario, responde 404 (para evitar enumeración).
+    - Actualiza `leida=True` de manera idempotente y devuelve el estado actualizado.
+    """
+
+    permission_classes = [IsAuthenticated, IsClientUser]
+
+    def patch(self, request, pk):
+        notificacion = get_object_or_404(
+            TicketNotificacion,
+            pk=pk,
+            destinatario=request.user,
+            empresa_id=request.user.empresa_id,
+        )
+
+        if not notificacion.leida:
+            notificacion.leida = True
+            notificacion.save(update_fields=["leida"])
+
+        serializer = ClientNotificationSerializer(notificacion)
+        return Response(
+            {
+                "success": True,
+                "id": notificacion.id,
+                "leida": True,
+                "notificacion": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 
 class SupportTicketInboxView(generics.ListCreateAPIView):
