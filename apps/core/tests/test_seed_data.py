@@ -21,7 +21,7 @@ import pytest
 from django.core.management import call_command
 
 from apps.companies.models import Empresa, ModuloContratado, RolChoices, Usuario
-from apps.tickets.models import Ticket, TicketItem
+from apps.tickets.models import Ticket, TicketItem, TicketNotificacion
 
 
 @pytest.mark.django_db
@@ -50,15 +50,17 @@ def test_seed_data_creates_expected_companies_and_active_modules():
 
 @pytest.mark.django_db
 def test_seed_data_creates_users_with_hashed_password_and_roles():
-    """Los 4 usuarios de prueba tienen `test123456` hasheada y los roles/empresas esperados."""
+    """Los usuarios de prueba tienen `test123456` hasheada y los roles/empresas esperados."""
     call_command("seed_data", stdout=StringIO())
 
     cliente_acme = Usuario.objects.get(correo="cliente@acme.com")
     cliente_global = Usuario.objects.get(correo="cliente@global.com")
     agente = Usuario.objects.get(correo="agente@datak.co")
+    soporte = Usuario.objects.get(correo="soporte@datak.co")
     dev = Usuario.objects.get(correo="dev@datak.co")
+    responsable = Usuario.objects.get(correo="responsable@datak.co")
 
-    for usuario in (cliente_acme, cliente_global, agente, dev):
+    for usuario in (cliente_acme, cliente_global, agente, soporte, dev, responsable):
         assert usuario.activo is True
         assert usuario.password != "test123456"
         assert usuario.check_password("test123456") is True
@@ -72,9 +74,16 @@ def test_seed_data_creates_users_with_hashed_password_and_roles():
     assert agente.rol == RolChoices.AGENTE_SOPORTE
     assert agente.empresa is None
 
+    assert soporte.rol == RolChoices.AGENTE_SOPORTE
+    assert soporte.empresa is None
+
     assert dev.rol == RolChoices.RESPONSABLE_ATENCION
     assert dev.empresa is None
     assert dev.is_staff is True
+
+    assert responsable.rol == RolChoices.RESPONSABLE_ATENCION
+    assert responsable.empresa is None
+    assert responsable.is_staff is True
 
 
 @pytest.mark.django_db
@@ -97,6 +106,27 @@ def test_seed_data_creates_multi_tenant_tickets_and_audit_items():
 
 
 @pytest.mark.django_db
+def test_seed_data_creates_notifications_for_resolved_and_dismissed_tickets():
+    """`seed_data` crea notificaciones para tickets resueltos y desestimados (BE-27, RF16)."""
+    call_command("seed_data", stdout=StringIO())
+
+    cliente_acme = Usuario.objects.get(correo="cliente@acme.com")
+    cliente_global = Usuario.objects.get(correo="cliente@global.com")
+
+    notif_acme = TicketNotificacion.objects.filter(destinatario=cliente_acme).first()
+    assert notif_acme is not None
+    assert notif_acme.ticket.radicado == "TK-2026-000003"
+    assert "Resuelto" in notif_acme.titulo
+    assert notif_acme.leida is False
+
+    notif_global = TicketNotificacion.objects.filter(destinatario=cliente_global).first()
+    assert notif_global is not None
+    assert notif_global.ticket.radicado == "TK-2026-000006"
+    assert "Desestimado" in notif_global.titulo
+    assert notif_global.leida is False
+
+
+@pytest.mark.django_db
 def test_seed_data_is_idempotent_on_repeated_runs():
     """Ejecutar `seed_data` dos veces seguidas no duplica registros ni falla por inmutabilidad."""
     call_command("seed_data", stdout=StringIO())
@@ -107,6 +137,7 @@ def test_seed_data_is_idempotent_on_repeated_runs():
         Usuario.objects.count(),
         Ticket.objects.count(),
         TicketItem.objects.count(),
+        TicketNotificacion.objects.count(),
     )
 
     # Segunda ejecución: debe actualizar/conservar sin duplicar ni modificar TicketItem existentes.
@@ -118,6 +149,7 @@ def test_seed_data_is_idempotent_on_repeated_runs():
         Usuario.objects.count(),
         Ticket.objects.count(),
         TicketItem.objects.count(),
+        TicketNotificacion.objects.count(),
     )
 
     assert conteo_final == conteo_inicial
