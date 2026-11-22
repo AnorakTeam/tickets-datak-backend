@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Comprobante de Recepción de Incidencia - {{ radicado }}</title>
+</head>
+<body style="margin: 0; padding: 24px; background-color: #f4f6f9; font-family: Arial, Helvetica, sans-serif; color: #1f2937;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+    <tr>
+      <td style="background-color: #1e3a8a; color: #ffffff; padding: 20px 24px;">
+        <h1 style="margin: 0; font-size: 20px; font-weight: bold;">Soporte Técnico Datak.co</h1>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #dbeafe;">Comprobante de recepción de incidencia</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 24px;">
+        <p style="margin: 0 0 16px 0; font-size: 15px;">Hola <strong>{{ destinatario_nombre }}</strong>,</p>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #374151;">
+          Hemos registrado exitosamente su solicitud de soporte para <strong>{{ empresa_nombre }}</strong>. Nuestro equipo técnico revisará su caso a la brevedad.
+        </p>
+
+        <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+          <span style="font-size: 12px; text-transform: uppercase; color: #1d4ed8; font-weight: bold;">Número de Radicado</span>
+          <div style="font-size: 22px; font-weight: bold; color: #1e3a8a; margin-top: 4px;">{{ radicado }}</div>
+        </div>
+
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="8" style="border-collapse: collapse; font-size: 14px;">
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563; width: 40%;">Módulo afectado:</td>
+            <td style="color: #111827;">{{ modulo }}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563;">Asunto:</td>
+            <td style="color: #111827;">{{ asunto }}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563;">Pantalla o documento:</td>
+            <td style="color: #111827;">{{ pestana_o_documento }}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563;">Prioridad:</td>
+            <td style="color: #111827;">{{ prioridad }}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="font-weight: bold; color: #4b5563;">Estado actual:</td>
+            <td style="color: #111827;">{{ estado }}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; color: #4b5563;">Fecha y hora de registro:</td>
+            <td style="color: #111827;">{{ fecha_registro }}</td>
+          </tr>
+        </table>
+
+        <p style="margin: 24px 0 0 0; font-size: 13px; line-height: 1.5; color: #6b7280;">
+          Conserve el código <strong>{{ radicado }}</strong> para hacer seguimiento del estado de su ticket desde la sección <em>Mis tickets</em> del portal o en el Chatbot de soporte.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="background-color: #f9fafb; padding: 14px 24px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+        Este es un mensaje automático generado por el sistema de tickets de Datak.co.
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

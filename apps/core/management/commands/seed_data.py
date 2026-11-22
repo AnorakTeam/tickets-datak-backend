@@ -28,6 +28,7 @@ from apps.tickets.models import (
     PrioridadChoices,
     Ticket,
     TicketItem,
+    TicketNotificacion,
     TipoAccionChoices,
 )
 
@@ -142,8 +143,22 @@ class Command(BaseCommand):
                 "is_staff": True,
             },
             {
+                "correo": "soporte@datak.co",
+                "nombre": "Ana Soporte (Agente Soporte)",
+                "rol": RolChoices.AGENTE_SOPORTE,
+                "empresa": None,
+                "is_staff": True,
+            },
+            {
                 "correo": "dev@datak.co",
                 "nombre": "Camila Ríos (Desarrolladora)",
+                "rol": RolChoices.RESPONSABLE_ATENCION,
+                "empresa": None,
+                "is_staff": True,
+            },
+            {
+                "correo": "responsable@datak.co",
+                "nombre": "Mariana Silva (Responsable Atención)",
                 "rol": RolChoices.RESPONSABLE_ATENCION,
                 "empresa": None,
                 "is_staff": True,
@@ -399,6 +414,53 @@ class Command(BaseCommand):
                     },
                 ],
             },
+            {
+                "radicado": "TK-2026-000006",
+                "empresa": global_log,
+                "creado_por": cliente_global,
+                "modulo": modulos_map[global_log.nombre]["VENTAS"],
+                "pestana_o_documento": "Configuración / Parámetros Generales",
+                "asunto": "Solicitud de modificación de campos fijos en formato de factura",
+                "descripcion": (
+                    "Se solicita eliminar campos de control fiscal predeterminados "
+                    "en el formato de impresión estándar."
+                ),
+                "mensaje_error": "",
+                "prioridad": PrioridadChoices.BAJA,
+                "estado": EstadoChoices.NO_PROCEDENTE,
+                "clasificacion": ClasificacionChoices.SOLICITUD_DE_MEJORA,
+                "canal_origen": CanalOrigenChoices.PORTAL,
+                "responsable": None,
+                "comentario_solucion": "",
+                "motivo_no_procedente": (
+                    "Los campos de control fiscal son obligatorios por regulación "
+                    "y no pueden ser retirados de la plantilla estándar."
+                ),
+                "fecha_resolucion": timezone.now(),
+                "items": [
+                    {
+                        "actor": cliente_global,
+                        "tipo_accion": TipoAccionChoices.CREACION,
+                        "estado_anterior": "",
+                        "estado_nuevo": EstadoChoices.ABIERTO,
+                        "responsable_asignado": None,
+                        "es_interna": False,
+                        "observaciones": "Ticket reportado a través del portal de clientes.",
+                    },
+                    {
+                        "actor": agente,
+                        "tipo_accion": TipoAccionChoices.NO_PROCEDENTE,
+                        "estado_anterior": EstadoChoices.ABIERTO,
+                        "estado_nuevo": EstadoChoices.NO_PROCEDENTE,
+                        "responsable_asignado": None,
+                        "es_interna": False,
+                        "observaciones": (
+                            "Los campos de control fiscal son obligatorios por regulación "
+                            "y no pueden ser retirados de la plantilla estándar."
+                        ),
+                    },
+                ],
+            },
         ]
 
         for t_data in tickets_seed:
@@ -439,3 +501,53 @@ class Command(BaseCommand):
                             f"  [TicketItem] Creado: {ticket.radicado} · {item_data['tipo_accion']}"
                         )
                     )
+
+        # Seed TicketNotificacion para tickets cerrados (Resuelto / No procedente) (BE-27, RF16)
+        notificaciones_seed = [
+            {
+                "radicado": "TK-2026-000003",
+                "destinatario": cliente_acme,
+                "empresa": acme,
+                "titulo": "Ticket Resuelto: TK-2026-000003",
+                "mensaje": (
+                    "Se habilitó el parámetro de redondeo de seguridad social en la "
+                    "configuración de nómina."
+                ),
+                "estado_nuevo": EstadoChoices.RESUELTO,
+                "leida": False,
+            },
+            {
+                "radicado": "TK-2026-000006",
+                "destinatario": cliente_global,
+                "empresa": global_log,
+                "titulo": "Ticket Desestimado: TK-2026-000006",
+                "mensaje": (
+                    "Los campos de control fiscal son obligatorios por regulación "
+                    "y no pueden ser retirados de la plantilla estándar."
+                ),
+                "estado_nuevo": EstadoChoices.NO_PROCEDENTE,
+                "leida": False,
+            },
+        ]
+
+        for n_data in notificaciones_seed:
+            radicado_target = n_data.pop("radicado")
+            ticket_target = Ticket.objects.filter(radicado=radicado_target).first()
+            if ticket_target:
+                notif, created_notif = TicketNotificacion.objects.get_or_create(
+                    ticket=ticket_target,
+                    destinatario=n_data["destinatario"],
+                    empresa=n_data["empresa"],
+                    defaults={
+                        "titulo": n_data["titulo"],
+                        "mensaje": n_data["mensaje"],
+                        "estado_nuevo": n_data["estado_nuevo"],
+                        "leida": n_data["leida"],
+                    },
+                )
+                accion_notif = "Creada" if created_notif else "Existente"
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"  [TicketNotificacion] {accion_notif}: {notif.titulo} -> {notif.destinatario.correo}"
+                    )
+                )
