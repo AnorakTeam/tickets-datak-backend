@@ -2,6 +2,7 @@
 
 import os
 import sys
+import importlib.util
 from datetime import timedelta
 from pathlib import Path
 
@@ -25,6 +26,10 @@ ALLOWED_HOSTS = [
     for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0").split(",")
     if host.strip()
 ]
+# Auto-allow Cloud Run hostnames when running in GCP
+if os.getenv("K_SERVICE"):
+    if ".a.run.app" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.extend([".a.run.app", ".run.app"])
 
 # Application definition
 INSTALLED_APPS = [
@@ -47,6 +52,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    *(["whitenoise.middleware.WhiteNoiseMiddleware"] if importlib.util.find_spec("whitenoise") else []),
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -87,16 +93,38 @@ if USE_SQLITE:
         }
     }
 else:
-    DATABASES = {
-        "default": {
-            "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.postgresql"),
-            "NAME": os.getenv("DB_NAME", "tickets_datak"),
-            "USER": os.getenv("DB_USER", "datak"),
-            "PASSWORD": os.getenv("DB_PASSWORD", "datak_dev_secret"),
-            "HOST": os.getenv("DB_HOST", "localhost"),
-            "PORT": os.getenv("DB_PORT", "5432"),
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        import urllib.parse
+
+        parsed_url = urllib.parse.urlparse(database_url)
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": parsed_url.path.lstrip("/"),
+                "USER": urllib.parse.unquote(parsed_url.username or ""),
+                "PASSWORD": urllib.parse.unquote(parsed_url.password or ""),
+                "HOST": parsed_url.hostname,
+                "PORT": parsed_url.port or 5432,
+                "OPTIONS": {
+                    "sslmode": os.getenv("DB_SSLMODE", "require"),
+                },
+            }
         }
-    }
+    else:
+        DATABASES = {
+            "default": {
+                "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.postgresql"),
+                "NAME": os.getenv("DB_NAME", "tickets_datak"),
+                "USER": os.getenv("DB_USER", "datak"),
+                "PASSWORD": os.getenv("DB_PASSWORD", "datak_dev_secret"),
+                "HOST": os.getenv("DB_HOST", "localhost"),
+                "PORT": os.getenv("DB_PORT", "5432"),
+                "OPTIONS": {
+                    "sslmode": os.getenv("DB_SSLMODE", "prefer"),
+                },
+            }
+        }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -130,6 +158,18 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if importlib.util.find_spec("whitenoise")
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        ),
+    },
+}
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -179,6 +219,13 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# CSRF trusted origins for Cloud Run and external clients
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 # Transactional email configuration (BE-09):
 # Uses console backend by default in local development, configurable via env vars
