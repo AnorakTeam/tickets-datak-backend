@@ -211,12 +211,14 @@ SIMPLE_JWT = {
 }
 
 # CORS configuration for Nuxt 4 frontend
+CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False").lower() in ("true", "1", "yes")
+
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
     ).split(",")
-    if origin.strip()
+    if origin.strip() and origin.strip() != "*"
 ]
 CORS_ALLOW_CREDENTIALS = True
 
