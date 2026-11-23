@@ -325,7 +325,10 @@ class ChatbotMensajesView(APIView):
             tickets_summary.append(
                 {
                     "radicado": t.radicado,
+                    "asunto": t.asunto,
+                    "modulo": t.modulo.nombre if t.modulo else "",
                     "estado": t.estado,
+                    "prioridad": t.prioridad,
                     "comentario_solucion": t.comentario_solucion or "",
                 }
             )
@@ -337,4 +340,5 @@ class ChatbotMensajesView(APIView):
             mensaje=mensaje,
             estado_actual=ChatbotState.INITIAL,
             campos_recolectados={"tickets_activos": tickets_summary},
+            opciones=[t.radicado for t in tickets],
         )
