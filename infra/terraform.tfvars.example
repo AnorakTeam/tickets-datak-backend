@@ -1,0 +1,18 @@
+project_id             = "your-gcp-project-id"
+region                 = "us-central1"
+service_name           = "tickets-backend"
+artifact_registry_repo = "tickets-datak-repo"
+backend_image_tag      = "latest"
+
+# Django settings
+django_secret_key      = "django-insecure-replace-with-a-secure-random-key"
+
+# Database Configuration (PostgreSQL / Supabase)
+# Formato: postgresql://[user]:[password]@[host]:[port]/[database]
+# NOTA: Consulta docs/POSTGRES_SUPABASE_SETUP.md para detalles de configuración de Supabase.
+database_url           = "postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+use_sqlite             = false
+
+# Autoscaling
+min_instances          = 0
+max_instances          = 3
