@@ -10,11 +10,22 @@ __pycache__/
 
 # Environment Variables
 .env
+.env.*
+!.env.example
 .env.local
 
 # Databases & Local Storage
 *.sqlite3
 postgres_data/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraformrc
+terraform.rc
 
 # Testing & Coverage
 .pytest_cache/
