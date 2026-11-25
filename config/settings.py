@@ -148,6 +148,14 @@ if os.environ.get("USE_SQLITE") == "True" or "pytest" in sys.modules:
     PASSWORD_HASHERS = [
         "django.contrib.auth.hashers.MD5PasswordHasher",
     ]
+else:
+    # Shared DatabaseCache for Cloud Run / multi-worker deployments so chatbot state persists across workers
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "django_cache_table",
+        }
+    }
 
 # Internationalization
 LANGUAGE_CODE = "es-co"

@@ -13,6 +13,10 @@ echo "==> Starting tickets-datak-backend on port ${PORT}..."
 echo "==> Running database migrations..."
 python manage.py migrate --noinput
 
+# Ensure Django DatabaseCache table exists for shared chatbot sessions
+echo "==> Ensuring cache table exists..."
+python manage.py createcachetable || true
+
 # Seed default test/demo data (idempotent)
 if [ "${AUTO_SEED:-True}" = "True" ] || [ "${AUTO_SEED:-true}" = "true" ]; then
     echo "==> Running seed_data..."
