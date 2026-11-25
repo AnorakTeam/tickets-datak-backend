@@ -820,12 +820,20 @@ class IncidentReportStateMachine:
             if normalize_text(mod.nombre).lower() == norm_text:
                 return mod
 
-        # 4. Substring / contains match on module name or code
+        # 4. Exact match on formatted option label 'Nombre (CODIGO)'
+        for mod in modules:
+            formatted = f"{normalize_text(mod.nombre).lower()} ({normalize_text(mod.codigo).lower()})"
+            if formatted == norm_text:
+                return mod
+
+        # 5. Substring / contains match on module name or code (bidirectional)
         matches = [
             mod
             for mod in modules
             if norm_text in normalize_text(mod.nombre).lower()
             or norm_text in normalize_text(mod.codigo).lower()
+            or normalize_text(mod.nombre).lower() in norm_text
+            or normalize_text(mod.codigo).lower() in norm_text
         ]
         if len(matches) == 1:
             return matches[0]
